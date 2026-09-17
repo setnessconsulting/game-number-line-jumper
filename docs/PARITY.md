@@ -11,7 +11,7 @@
 - Source shared primitive: `src/lib/games/shared/rng.ts`
 - Source tests: `legacy/next-reference/tests/numberLineJumper*.test.ts` and `legacy/next-reference/tests/e2e/numberLineJumper.spec.ts`
 - Target branch: `codex/game-291-bootstrap`
-- Target extraction commit: recorded after the first bootstrap commit
+- Target extraction commit: `290f39bb7691c7425de6dad30b1afe150fce1319`
 
 ## Component disposition
 
@@ -53,3 +53,18 @@ npm run test:e2e
 ```
 
 Results will be filled with the exact clean-clone run after the extraction commit. The baseline CI workflow is credential-free and runs `npm ci`, typecheck, lint, unit tests, and build.
+
+### Local verification before clean-room validation
+
+- `npm ci --ignore-scripts`: PASS; lockfile install completed with 164 packages and 0 vulnerabilities.
+- `npm run typecheck`: PASS.
+- `npm run lint`: PASS.
+- `npm test`: PASS; 8 test files and 147 tests.
+- `npm run build`: PASS; Vite transformed 23 modules and produced `dist/`.
+- `GAME_NLJ_E2E_PORT=4190 npm run test:e2e`: PASS; 13 browser tests passed and 1 desktop mobile-only test was intentionally skipped across Chromium desktop and mobile projects.
+- Built preview visual/runtime check on port 4189: PASS; meaningful page content, no Vite error overlay, no browser console errors, Guided warm-up/reveal, and playable slider observed.
+- The prescribed `agent-browser` executable was unavailable on this workstation; Playwright plus the available browser surface provided the equivalent built-runtime evidence.
+
+### Clean-clone validation
+
+Pending the final remote-branch clone and its independent `npm ci`, typecheck, lint, unit, build, and browser smoke run.
