@@ -33,6 +33,7 @@ import {
   valueAtPosition,
 } from "@/lib/numberLineJumper/engine";
 import type { AdaptiveTargetGeneratorState } from "@/lib/numberLineJumper/engine";
+import { generateExplorePrompt } from "@/lib/numberLineJumper/explorePrompt";
 import { sessionAggregates } from "@/lib/numberLineJumper/aggregates";
 import { closeSoundContext, playSoundCue, soundCueForError, type SoundCue } from "@/lib/numberLineJumper/sound";
 import {
@@ -163,6 +164,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
   const [visitDelta, setVisitDelta] = useState({ averageError: false, closeStreak: false });
 
   const rngRef = useRef<() => number>(() => 0.5);
+  const exploreRngRef = useRef<() => number>(() => 0.5);
   const adaptiveGeneratorStateRef = useRef<AdaptiveTargetGeneratorState>(createAdaptiveTargetGeneratorState());
   const runBandRef = useRef<PlacementBand | null>(null);
   const runModeRef = useRef<RoundMode>("guided");
@@ -303,6 +305,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
 
   function beginExplore() {
     clearAdvanceTimer();
+    exploreRngRef.current = mulberry32(newGameSeed());
     setBand(null);
     setTarget(null);
     setExploreNorm(0.5);
@@ -340,16 +343,10 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
   /** GAME-5: optional unscored "find this number" mini-prompt inside Explore. */
   function newExplorePrompt() {
     const window = exploreZoomWindow(exploreZoom, exploreNorm);
-    const span = window.max - window.min;
-    const ticks = exploreZoomTicks(window);
-    const steps = Math.max(1, Math.round(span / ticks.major));
-    const step = Math.max(1, Math.floor(steps / 8));
-    const pick = Math.floor(rngRef.current() * 9);
-    const value = window.min + Math.min(steps, Math.max(0, pick * step + 1)) * ticks.major;
-    const rounded = Math.min(window.max, Math.max(window.min, Math.round(value * 100) / 100));
-    setExplorePrompt(rounded);
+    const nextPrompt = generateExplorePrompt(window, exploreRngRef.current, explorePrompt);
+    setExplorePrompt(nextPrompt);
     setExploreFound(null);
-    setAnnounce(`Find ${formatValue(rounded)} on this line. Unscored practice.`);
+    setAnnounce(`Find ${formatValue(nextPrompt)} on this line. Unscored practice.`);
   }
 
   function checkExplorePrompt(value: number) {

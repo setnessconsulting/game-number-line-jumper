@@ -115,8 +115,19 @@ test.describe("Number Line Jumper browser flow", () => {
 
     // Unscored mini-prompt appears on demand and stays unscored.
     await page.getByRole("button", { name: "Find this number" }).click();
-    await expect(page.locator(".nl-explore-prompt")).toContainText("Unscored practice");
-    await expect(page.locator(".nl-explore-prompt")).not.toContainText("point");
+    const promptPanel = page.locator(".nl-explore-prompt");
+    await expect(promptPanel).toContainText("Unscored practice");
+    await expect(promptPanel).not.toContainText("point");
+    let previousPrompt = await promptPanel.locator("strong").innerText();
+    const prompts = new Set([previousPrompt]);
+    for (let index = 0; index < 4; index += 1) {
+      await page.getByRole("button", { name: "New number" }).click();
+      const nextPrompt = await promptPanel.locator("strong").innerText();
+      expect(nextPrompt).not.toBe(previousPrompt);
+      prompts.add(nextPrompt);
+      previousPrompt = nextPrompt;
+    }
+    expect(prompts.size).toBeGreaterThan(1);
 
     // Nothing about exploration is persisted.
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
