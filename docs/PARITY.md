@@ -52,7 +52,7 @@ npm run build
 npm run test:e2e
 ```
 
-Results will be filled with the exact clean-clone run after the extraction commit. The baseline CI workflow is credential-free and runs `npm ci`, typecheck, lint, unit tests, and build.
+The baseline CI workflow is credential-free and runs `npm ci`, typecheck, lint, unit tests, and build.
 
 ### Local verification before clean-room validation
 
@@ -67,4 +67,12 @@ Results will be filled with the exact clean-clone run after the extraction commi
 
 ### Clean-clone validation
 
-Pending the final remote-branch clone and its independent `npm ci`, typecheck, lint, unit, build, and browser smoke run.
+Remote branch `codex/game-291-bootstrap` was cloned at `8b72de3ec0feb3d516ebcd890059fdcb1eb3b026` into a clean directory with no LevelBest checkout in the validation working directory.
+
+- `npm ci`: PASS; lockfile install completed with 164 packages and 0 vulnerabilities.
+- `npm run typecheck`: PASS.
+- `npm run lint`: PASS.
+- `npm test`: PASS; 8 test files and 147 tests.
+- `npm run build`: PASS; Vite transformed 23 modules and produced `dist/`.
+- `GAME_NLJ_E2E_PORT=4191 npm run test:e2e`: PASS; 13 browser tests passed and 1 desktop mobile-only test was intentionally skipped across Chromium desktop and mobile projects.
+- Clean-clone git status after verification: PASS; no tracked changes.
