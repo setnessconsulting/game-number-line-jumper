@@ -101,7 +101,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-explore-readout strong { color: var(--ink); }
 .nl-zoom-controls { display: grid; gap: 8px; margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8faff; }
 .nl-zoom-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.nl-zoom-row .button { min-height: 48px; }
+.nl-zoom-row .button { min-width: 48px; min-height: 48px; }
 .nl-zoom-slider { flex: 1 1 160px; display: grid; }
 .nl-zoom-slider input[type="range"] { width: 100%; min-height: 48px; accent-color: var(--primary); }
 .nl-explore-prompt { display: grid; gap: 8px; justify-items: start; margin-top: 14px; color: var(--muted); }
