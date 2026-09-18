@@ -946,7 +946,11 @@ export default function NumberLineJumper({
             <span>{formatRangeValue(range.max)}</span>
           </div>
           <div className="nl-tick-row" aria-hidden="true">
-            {ticks.majorTicks.map((tick) => <span key={tick} className="nl-tick-label">{formatValue(tick)}</span>)}
+            {ticks.majorTicks.map((tick) => (
+              <span key={tick} className="nl-tick-label" style={posStyle(exploreZoomNormForValue(tick, range))}>
+                {formatValue(tick)}
+              </span>
+            ))}
           </div>
           <div
             ref={trackRef}
