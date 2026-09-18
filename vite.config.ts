@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig(({ mode }) => ({
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: {

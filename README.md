@@ -23,7 +23,7 @@ The mathematical engine in `src/lib/numberLineJumper/` is pure TypeScript. It ow
 
 The React shell in `src/app/games/NumberLineJumper.tsx` preserves the shipping Guided, Challenge, and Explore paths, including whole numbers, fractions, decimals, negatives, accessibility semantics, reduced-motion behavior, opt-in Web Audio, and page-session-only visit bests. Its optional v1 host prop is documented in [`docs/HOST_CONTRACT.md`](docs/HOST_CONTRACT.md); host-specific application wiring remains outside this repository. Explore zoom remains unscored; GAME-229 scored zoom is not implemented.
 
-GAME-292 establishes the standalone host boundary and local integration harness. This repository still does not implement LevelBest-specific lesson wiring or games-site publication/promotion/rollback (GAME-293); those and the downstream quality stories remain separately scoped.
+GAME-292 establishes the standalone host boundary and local integration harness. GAME-293 adds the static-web build/release contract used by games-site; public catalog selection, promotion, rollback, and hosted acceptance remain owned by `setnessconsulting/games-site`. LevelBest-specific lesson wiring and downstream quality stories remain separately scoped.
 
 ## Development
 
@@ -62,7 +62,7 @@ Pull requests and pushes always run typecheck, lint, unit/coverage checks, both 
 
 The IP scan checks `src/`, `public/` when present, `index.html`, and the production bundle. Benchmark/provenance documentation and tests are separate from shipped source; GAME-222's comparison ledger remains its own deferred story. The bundle gate restricts direct learner runtime dependencies to React and React DOM and rejects known game-engine, WebGL/Unity, and browser-observability runtimes.
 
-The app is intentionally privacy-minimal: game state and visit bests remain in React memory for the current page session. There are no accounts, trackers, telemetry, Sentry, gameplay network calls, or child-data persistence.
+The app is intentionally privacy-minimal: game state and visit bests remain in React memory for the current page session. There are no accounts, trackers, telemetry, Sentry, gameplay network calls, or child-data persistence. The production build uses relative asset URLs so the immutable bundle can be served safely from a versioned games-site subpath; see [`docs/GAMES_SITE_RELEASE.md`](docs/GAMES_SITE_RELEASE.md).
 
 ## Ownership boundaries
 
