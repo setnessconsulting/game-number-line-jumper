@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "9b5f418f10503e4fb2d592756f9fb19c22c12dc5",
+  "learnerJavaScript": {
+    "rawBytes": 245811,
+    "gzipBytes": 74652
+  },
+  "materialIncreasePolicy": {
+    "maxPercent": 5,
+    "maxAbsoluteGzipBytes": 4096
+  },
+  "crux": {
+    "status": "UNKNOWN/PENDING",
+    "reason": "Number Line Jumper is not yet promoted to a public production route under GAME-293, so eligible CrUX field INP data is not available. No runtime beacon is permitted."
+  }
+}
