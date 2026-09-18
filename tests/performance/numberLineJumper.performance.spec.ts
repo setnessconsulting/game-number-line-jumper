@@ -47,79 +47,94 @@ async function installLongTaskObserver(page: Page) {
 }
 
 async function measurePointerMoves(page: Page, count = 220): Promise<MoveMetric[]> {
-  const track = page.locator(".nl-track-explore");
-  const box = await track.boundingBox();
-  if (!box) throw new Error("Explore track has no bounding box.");
-  const y = box.y + box.height / 2;
-  const left = box.x + 18;
-  const right = box.x + box.width - 18;
+  return page.evaluate(async (sampleCount) => {
+    const trackElement = document.querySelector<HTMLElement>(".nl-track-explore");
+    const marker = trackElement?.querySelector<HTMLElement>(".nl-marker");
+    if (!trackElement || !marker) throw new Error("Explore performance targets are missing.");
 
-  await page.mouse.move(left, y);
-  await page.mouse.down();
-  try {
-    return await page.evaluate(
-      async ({ sampleCount, clientLeft, clientRight, clientY }) => {
-        const trackElement = document.querySelector<HTMLElement>(".nl-track-explore");
-        const marker = trackElement?.querySelector<HTMLElement>(".nl-marker");
-        if (!trackElement || !marker) throw new Error("Explore performance targets are missing.");
+    const rect = trackElement.getBoundingClientRect();
+    const inset = 18;
+    const clientLeft = rect.left + inset;
+    const clientRight = rect.right - inset;
+    const clientY = rect.top + rect.height / 2;
+    const pointerId = 99;
 
-        return new Promise<MoveMetric[]>((resolve) => {
-          const samples: MoveMetric[] = [];
-          let sent = 0;
-          let completed = 0;
-          const timer = window.setInterval(() => {
-            if (sent >= sampleCount) {
-              window.clearInterval(timer);
+    trackElement.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      buttons: 1,
+      clientX: clientLeft,
+      clientY,
+    }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const samples = await new Promise<MoveMetric[]>((resolve) => {
+      const measured: MoveMetric[] = [];
+      let sent = 0;
+      let completed = 0;
+      const timer = window.setInterval(() => {
+        if (sent >= sampleCount) {
+          window.clearInterval(timer);
+          return;
+        }
+
+        const index = sent;
+        const half = Math.max(1, Math.floor(sampleCount / 2));
+        const fraction = index < half
+          ? index / Math.max(1, half - 1)
+          : 1 - (index - half) / Math.max(1, sampleCount - half - 1);
+        const clientX = clientLeft + fraction * (clientRight - clientLeft);
+        const before = marker.style.getPropertyValue("--nl-pos");
+        const event = new PointerEvent("pointermove", {
+          bubbles: true,
+          cancelable: true,
+          pointerId,
+          pointerType: "mouse",
+          isPrimary: true,
+          buttons: 1,
+          clientX,
+          clientY,
+        });
+        const eventTimestamp = event.timeStamp;
+        trackElement.dispatchEvent(event);
+        sent += 1;
+
+        let frames = 0;
+        const captureResultingFrame = () => {
+          requestAnimationFrame(() => {
+            frames += 1;
+            const after = marker.style.getPropertyValue("--nl-pos");
+            if (after === before && frames < 2) {
+              captureResultingFrame();
               return;
             }
-
-            const index = sent;
-            const half = Math.max(1, Math.floor(sampleCount / 2));
-            const fraction = index < half
-              ? index / Math.max(1, half - 1)
-              : 1 - (index - half) / Math.max(1, sampleCount - half - 1);
-            const clientX = clientLeft + fraction * (clientRight - clientLeft);
-            const before = marker.style.getPropertyValue("--nl-pos");
-            const event = new PointerEvent("pointermove", {
-              bubbles: true,
-              cancelable: true,
-              pointerId: 1,
-              pointerType: "mouse",
-              isPrimary: true,
-              buttons: 1,
-              clientX,
-              clientY,
+            measured.push({
+              latencyMs: Math.max(0, performance.now() - eventTimestamp),
+              changed: after !== before,
             });
-            const eventTimestamp = event.timeStamp;
-            trackElement.dispatchEvent(event);
-            sent += 1;
+            completed += 1;
+            if (completed === sampleCount) resolve(measured);
+          });
+        };
+        captureResultingFrame();
+      }, 4);
+    });
 
-            let frames = 0;
-            const captureResultingFrame = () => {
-              requestAnimationFrame(() => {
-                frames += 1;
-                const after = marker.style.getPropertyValue("--nl-pos");
-                if (after === before && frames < 2) {
-                  captureResultingFrame();
-                  return;
-                }
-                samples.push({
-                  latencyMs: Math.max(0, performance.now() - eventTimestamp),
-                  changed: after !== before,
-                });
-                completed += 1;
-                if (completed === sampleCount) resolve(samples);
-              });
-            };
-            captureResultingFrame();
-          }, 4);
-        });
-      },
-      { sampleCount: count, clientLeft: left, clientRight: right, clientY: y },
-    );
-  } finally {
-    await page.mouse.up();
-  }
+    trackElement.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      buttons: 0,
+      clientX: clientLeft,
+      clientY,
+    }));
+    return samples;
+  }, count);
 }
 
 test.describe("GAME-219 rendering and performance qualification", () => {
