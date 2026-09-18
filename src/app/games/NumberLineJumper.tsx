@@ -35,6 +35,16 @@ import {
 import type { AdaptiveTargetGeneratorState } from "@/lib/numberLineJumper/engine";
 import { generateExplorePrompt } from "@/lib/numberLineJumper/explorePrompt";
 import { sessionAggregates } from "@/lib/numberLineJumper/aggregates";
+import {
+  createHostEventSinkV1,
+  HOST_CONTRACT_VERSION,
+  resolveHostContractV1,
+  scheduleDeadlineV1,
+} from "@/lib/numberLineJumper/hostContract";
+import type {
+  HostEventSinkV1,
+  NumberLineJumperHostV1,
+} from "@/lib/numberLineJumper/hostContract";
 import { closeSoundContext, playSoundCue, soundCueForError, type SoundCue } from "@/lib/numberLineJumper/sound";
 import {
   recordCallouts,
@@ -123,16 +133,43 @@ function biasCopy(bias: "low" | "high" | "balanced" | "unknown"): string | null 
   return null;
 }
 
+function HostBreakBadge({ secondsRemaining }: { secondsRemaining: number | null }) {
+  return secondsRemaining === null
+    ? null
+    : <p className="microcopy" role="timer" aria-label={`Break time remaining: ${secondsRemaining} seconds`}>Break · {secondsRemaining}s left</p>;
+}
+
 /** Module-scope seed source keeps the impure call out of component render scope. */
 function newGameSeed(): number {
   return Date.now() % 1_000_000;
 }
 
-export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
+export default function NumberLineJumper({
+  onExit,
+  host,
+}: {
+  onExit: () => void;
+  host?: NumberLineJumperHostV1;
+}) {
+  const [hostRuntime] = useState(() => resolveHostContractV1(host));
+  const hostCallbacksRef = useRef(host?.callbacks);
+  hostCallbacksRef.current = host?.callbacks;
+  const hostEventSinkRef = useRef<HostEventSinkV1 | null>(null);
+  if (hostEventSinkRef.current === null) {
+    hostEventSinkRef.current = createHostEventSinkV1({
+      onExit: (event) => hostCallbacksRef.current?.onExit?.(event),
+      onReturnToPractice: (event) => hostCallbacksRef.current?.onReturnToPractice?.(event),
+      onRoundComplete: (event) => hostCallbacksRef.current?.onRoundComplete?.(event),
+      onSessionAggregate: (event) => hostCallbacksRef.current?.onSessionAggregate?.(event),
+      onError: (event) => hostCallbacksRef.current?.onError?.(event),
+    });
+  }
+  const hostEventSink = hostEventSinkRef.current;
   const [band, setBand] = useState<PlacementBand | null>(null);
   const [phase, setPhase] = useState<Phase>("setup");
   const [mode, setMode] = useState<RoundMode>("guided");
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
+  const [hostBreakSecondsLeft, setHostBreakSecondsLeft] = useState<number | null>(null);
   const [target, setTarget] = useState<Target | null>(null);
   const [markerNorm, setMarkerNorm] = useState(0.5);
   const [warmupNorm, setWarmupNorm] = useState(0.5);
@@ -170,6 +207,12 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
   const runModeRef = useRef<RoundMode>("guided");
   const targetIndexRef = useRef(0);
   const trialsRef = useRef<TrialRecord[]>([]);
+  const sessionTrialsRef = useRef<TrialRecord[]>([]);
+  const roundNumberRef = useRef(0);
+  const roundFinalizedRef = useRef(false);
+  const hostBreakCompletedRef = useRef(false);
+  const hostAutoStartRef = useRef(false);
+  const exitRequestedRef = useRef(false);
   const visitBestsRef = useRef<VisitBests | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -191,6 +234,48 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
     }
   }, []);
 
+  useEffect(() => {
+    hostEventSink.activate();
+    return () => hostEventSink.dispose();
+  }, [hostEventSink]);
+
+  useEffect(() => {
+    for (const error of hostRuntime.errors) hostEventSink.reportError(error);
+  }, [hostEventSink, hostRuntime]);
+
+  useEffect(() => {
+    if (hostRuntime.mode !== "break" || hostRuntime.deadlineEpochMs === null) {
+      setHostBreakSecondsLeft(null);
+      return;
+    }
+    const updateRemaining = () => {
+      setHostBreakSecondsLeft(Math.ceil(Math.max(0, hostRuntime.deadlineEpochMs! - Date.now()) / 1_000));
+    };
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 1_000);
+    return () => window.clearInterval(interval);
+  }, [hostRuntime]);
+
+  useEffect(() => {
+    if (hostRuntime.mode !== "break" || hostRuntime.deadlineEpochMs === null) return;
+    return scheduleDeadlineV1(hostRuntime.deadlineEpochMs, {
+      now: () => Date.now(),
+      schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+      cancel: (handle) => window.clearTimeout(handle as number),
+    }, () => {
+      if (hostBreakCompletedRef.current) return;
+      hostBreakCompletedRef.current = true;
+      const context = hostRuntime.sessionContext;
+      hostEventSink.emitSessionAggregate({
+        version: HOST_CONTRACT_VERSION,
+        reason: "break-complete",
+        aggregate: sessionAggregates({ trials: sessionTrialsRef.current }),
+        context,
+      });
+      hostEventSink.emitReturnToPractice({ version: HOST_CONTRACT_VERSION, reason: "deadline", context });
+    });
+  }, [hostEventSink, hostRuntime]);
+
   const playCue = useCallback(
     (cue: SoundCue) => {
       if (soundEnabled) playSoundCue(audioContextRef, cue);
@@ -199,13 +284,41 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
   );
 
   const exitGame = useCallback(() => {
+    if (exitRequestedRef.current) return;
+    exitRequestedRef.current = true;
     clearAdvanceTimer();
+    const context = hostRuntime.sessionContext;
+    hostEventSink.emitSessionAggregate({
+      version: HOST_CONTRACT_VERSION,
+      reason: "exit",
+      aggregate: sessionAggregates({ trials: sessionTrialsRef.current }),
+      context,
+    });
+    if (hostRuntime.mode === "break") {
+      hostEventSink.emitReturnToPractice({ version: HOST_CONTRACT_VERSION, reason: "user-exit", context });
+    }
+    hostEventSink.emitExit({ version: HOST_CONTRACT_VERSION, reason: "user-exit", mode: hostRuntime.mode, context });
     onExit();
-  }, [clearAdvanceTimer, onExit]);
+  }, [clearAdvanceTimer, hostEventSink, hostRuntime, onExit]);
 
   const endRound = useCallback(() => {
+    if (roundFinalizedRef.current) return;
+    roundFinalizedRef.current = true;
     clearAdvanceTimer();
     playCue("finish");
+    const summary = summarizeRound(trialsRef.current);
+    const runBand = runBandRef.current;
+    if (runBand) {
+      hostEventSink.emitRoundComplete({
+        version: HOST_CONTRACT_VERSION,
+        roundNumber: roundNumberRef.current,
+        band: runBand,
+        mode: runModeRef.current,
+        summary,
+        sessionAggregate: sessionAggregates({ trials: sessionTrialsRef.current }),
+        context: hostRuntime.sessionContext,
+      });
+    }
     // Fold the finished run into the session-only visit bests (LEVELBEST-57).
     // Uses the trials/visit refs so timer callbacks never see stale state.
     const result = updateVisitBests(visitBestsRef.current, summarizeRound(trialsRef.current));
@@ -216,7 +329,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
     setCommitted(false);
     setLastScore(null);
     setAnnounce("");
-  }, [clearAdvanceTimer, playCue]);
+  }, [clearAdvanceTimer, hostEventSink, hostRuntime, playCue]);
 
   const nextTarget = useCallback((completedTrials: readonly TrialRecord[]) => {
     clearAdvanceTimer();
@@ -248,6 +361,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
 
   function prepareRound(id: PlacementBand) {
     clearAdvanceTimer();
+    roundFinalizedRef.current = false;
     const nextSeed = newGameSeed();
     rngRef.current = mulberry32(nextSeed);
     runBandRef.current = id;
@@ -285,15 +399,23 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
       setPhase("intro");
       return;
     }
+    roundNumberRef.current += 1;
     setPhase("playing");
     playCue("start");
   }
 
   function startRound(id: PlacementBand) {
     prepareRound(id);
+    roundNumberRef.current += 1;
     setPhase("playing");
     playCue("start");
   }
+
+  useEffect(() => {
+    if (hostAutoStartRef.current || !hostRuntime.autoStart || !hostRuntime.initialBand) return;
+    hostAutoStartRef.current = true;
+    startRound(hostRuntime.initialBand);
+  }, [hostRuntime]);
 
   function goToSetup() {
     clearAdvanceTimer();
@@ -518,6 +640,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
     // state stay in sync even under double-invoked updaters.
     const nextTrials = [...trials, record];
     trialsRef.current = nextTrials;
+    sessionTrialsRef.current = [...sessionTrialsRef.current, record];
     setTrials(nextTrials);
     clearAdvanceTimer();
     advanceTimerRef.current = window.setTimeout(() => {
@@ -580,6 +703,11 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
           <span>Number Line Jumper · pick your level</span>
           <button type="button" className="link-button" onClick={exitGame}>All games</button>
         </div>
+        <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
+
+        {hostRuntime.initialBand && !hostRuntime.autoStart ? (
+          <p className="microcopy">Suggested level: {BAND_META[hostRuntime.initialBand].label}. You can choose another.</p>
+        ) : null}
 
         <fieldset className="nl-mode-picker">
           <legend>How do you want to play?</legend>
@@ -631,6 +759,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
           <span>Number Line Jumper · guided warm-up</span>
           <button type="button" className="link-button" onClick={goToSetup}>Back to levels</button>
         </div>
+        <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
         <div className="eyebrow">Quick warm-up · no score</div>
         <h2 ref={headingRef} tabIndex={-1}>Build the picture before you jump.</h2>
         <p className="lede nl-intro-lede">
@@ -715,6 +844,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
           <span>Number Line Jumper · explore</span>
           <button type="button" className="link-button" onClick={goToSetup}>Back to levels</button>
         </div>
+        <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
         <div className="eyebrow">Untimed number sense lab</div>
         <h2 ref={headingRef} tabIndex={-1}>Move the jumper and notice the size.</h2>
         <p className="lede nl-intro-lede">
@@ -932,6 +1062,7 @@ export default function NumberLineJumper({ onExit }: { onExit: () => void }) {
         </div>
         <button type="button" className="link-button" onClick={exitGame}>Exit</button>
       </div>
+      <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
       <div className="progress" aria-hidden="true"><span style={{ width: `${(timeLeft / ROUND_SECONDS) * 100}%` }} /></div>
 
       <div style={{ marginTop: 22 }}>
