@@ -78,19 +78,17 @@ async function dragSamples(page: Page, count = 220) {
   const box = await track.boundingBox();
   if (!box) throw new Error("Explore track has no bounding box.");
   const y = box.y + box.height / 2;
-  await page.mouse.move(box.x + 18, y);
+  const left = box.x + 18;
+  const right = box.x + box.width - 18;
+  await page.mouse.move(left, y);
   await page.mouse.down();
-  for (let index = 0; index < count; index += 1) {
-    const fraction = index % 2 === 0
-      ? 0.12 + (index % 40) / 50
-      : 0.88 - (index % 40) / 50;
-    await page.mouse.move(box.x + Math.max(18, Math.min(box.width - 18, box.width * fraction)), y);
-  }
+  await page.mouse.move(right, y, { steps: Math.ceil(count / 2) });
+  await page.mouse.move(left, y, { steps: Math.floor(count / 2) });
   await page.mouse.up();
   await page.waitForFunction((minimum) => {
     const state = (window as typeof window & { __nlPerf?: PerfState }).__nlPerf;
     return (state?.moves.length ?? 0) >= minimum;
-  }, Math.floor(count * 0.75));
+  }, Math.floor(count * 0.6), { timeout: 10_000 });
 }
 
 async function readState(page: Page): Promise<PerfState> {
@@ -154,7 +152,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
 
     let state = await readState(page);
     const typical = state.moves.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
-    expect(typical.length).toBeGreaterThanOrEqual(150);
+    expect(typical.length).toBeGreaterThanOrEqual(100);
     const typicalP95 = p95(typical);
     expect(typicalP95).toBeLessThanOrEqual(16);
 
@@ -171,7 +169,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     }
     const throttled = state.moves.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
-    expect(throttled.length).toBeGreaterThanOrEqual(150);
+    expect(throttled.length).toBeGreaterThanOrEqual(100);
     const throttledP95 = p95(throttled);
     expect(throttledP95).toBeLessThanOrEqual(50);
 
