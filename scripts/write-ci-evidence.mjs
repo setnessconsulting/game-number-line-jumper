@@ -120,7 +120,15 @@ const manifest = {
     projects: ["chromium", "mobile-webkit"],
     manualWorkflowDispatchRunsFullMatrix: true,
   },
-  verificationStage: verificationPassed && fullBrowserQualification ? "full-browser-and-accessibility" : verificationPassed ? "static-and-unit-only" : "failed-or-incomplete",
+  verificationStage: !verificationPassed
+    ? "failed-or-incomplete"
+    : fullBrowserQualification
+      ? "full-browser-and-accessibility"
+      : browserJobStatus === "failure"
+        ? "static-and-unit-passed-browser-failed"
+        : browserJobStatus === "cancelled"
+          ? "browser-qualification-cancelled"
+          : "static-and-unit-only",
   note: "This artifact records this CI run only; it is not final release acceptance and does not imply GAME-219, owner, host-deployment, or publication gates are complete.",
 };
 
