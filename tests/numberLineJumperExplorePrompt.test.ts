@@ -49,4 +49,15 @@ describe("GAME-231 Explore prompt generation", () => {
     expect(generateExplorePrompt(window, () => 0)).toBe(ticks[0]);
     expect(generateExplorePrompt(window, () => 1)).toBe(ticks.at(-1));
   });
+
+  it("normalizes non-finite and out-of-range random samples and reuses a sole tick", () => {
+    const window = { min: 5, max: 5 };
+    expect(generateExplorePrompt(window, () => Number.NaN)).toBe(5);
+    expect(generateExplorePrompt(window, () => -1)).toBe(5);
+    expect(generateExplorePrompt(window, () => 1, 5)).toBe(5);
+  });
+
+  it("rejects a window with no finite major ticks", () => {
+    expect(() => generateExplorePrompt({ min: Number.NaN, max: Number.NaN }, () => 0)).toThrow(RangeError);
+  });
 });

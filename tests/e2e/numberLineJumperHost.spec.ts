@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../browserErrorFixture";
 
 const FIXED_TIME = new Date("2026-01-01T00:00:00.000Z");
 

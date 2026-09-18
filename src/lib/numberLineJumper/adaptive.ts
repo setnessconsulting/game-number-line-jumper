@@ -3,7 +3,7 @@ import type { Range, TargetIntent, TrialRecord } from "./types";
 export type AdaptiveSide = "low" | "high";
 
 /**
- * LEVELBEST-60 keeps adaptation deliberately small and inspectable. These
+ * Adaptation is deliberately small and inspectable. These
  * values are part of the behavior contract, not tuning magic hidden in the
  * target generator.
  */

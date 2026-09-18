@@ -32,21 +32,35 @@ Required runtime: Node.js `24.x` (see `.nvmrc`).
 ```text
 npm ci
 npm run dev
+npm run test:ci
+```
+
+`npm run test:ci` is the complete local pre-push gate: typecheck, lint, unit tests with coverage thresholds, production build, source/IP scan, bundle assertion, production browser journeys, accessibility qualification, and host-lifecycle browser tests. For faster iteration, run the relevant command directly:
+
+```text
 npm run typecheck
 npm run lint
 npm test
+npm run test:coverage
 npm run build
 npm run test:e2e
 npm run test:a11y
+npm run test:host
 ```
 
-`npm run test:e2e` builds a preview bundle with the local-only host harness, starts Vite preview, and runs the standalone browser journeys. The normal `npm run build` excludes the harness from the release artifact. Install the Playwright Chromium and WebKit browsers once when needed:
+The coverage gate uses V8 coverage for the engine, adaptive/scoring modules, host contract and adapters, Explore prompt, sound, visit-bests, and seeded random helper. Each included module must reach at least 90% lines, branches, and functions. The type-only `types.ts` module is intentionally outside the runtime coverage denominator; no executable critical module is excluded.
+
+`npm run test:e2e` builds the learner production artifact and tests it through Vite preview on port 4173. The accessibility suite uses the same production artifact and its own preview port (4174), with desktop Chromium and mobile WebKit. The host-lifecycle suite uses a separate test-only build and port (4175), so the local harness is not included in the learner artifact. Browser `console.error` and uncaught page errors fail every browser suite; Playwright retries are explicitly disabled so reruns cannot conceal the first failure. Install the Playwright Chromium and WebKit browsers once when needed:
 
 ```text
 npx playwright install chromium webkit
 ```
 
 `npm run test:a11y` builds the production artifact and runs axe, target-size, keyboard, reduced-motion, reflow, and network checks against desktop Chromium and mobile WebKit. Its current state coverage includes setup, Guided, Challenge, reveal/feedback, Explore zoom, and summary. GAME-220 wait-for-me reveal and GAME-235 hidden-tab pause coverage remain outstanding until those behaviors land; do not use this partial matrix as final accessibility-release evidence. Owner-observed NVDA/VoiceOver verification remains a separate GAME-224 gate.
+
+Pull requests and pushes always run typecheck, lint, unit/coverage checks, both builds, IP separation, and bundle assertions. The desktop/mobile browser and accessibility suites are skipped only for documentation-only changes; `workflow_dispatch` runs the full matrix even for docs-only commits when release evidence needs it. Browser jobs reuse the uploaded learner production build. Coverage, build, browser reports/traces, and a JSON CI-evidence manifest are attached to the exact workflow SHA. The manifest records the source SHA, tested workflow SHA, lockfile hash, Node/npm/Playwright/Vitest and pinned Chromium/WebKit versions, build hash, coverage totals, and individual gate outcomes; GitHub retains these artifacts for 90 days, so GAME-224 must preserve durable release evidence in its checked-in manifest.
+
+The IP scan checks `src/`, `public/` when present, `index.html`, and the production bundle. Benchmark/provenance documentation and tests are separate from shipped source; GAME-222's comparison ledger remains its own deferred story. The bundle gate restricts direct learner runtime dependencies to React and React DOM and rejects known game-engine, WebGL/Unity, and browser-observability runtimes.
 
 The app is intentionally privacy-minimal: game state and visit bests remain in React memory for the current page session. There are no accounts, trackers, telemetry, Sentry, gameplay network calls, or child-data persistence.
 

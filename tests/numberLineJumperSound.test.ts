@@ -201,6 +201,47 @@ describe("playSoundCue lifecycle", () => {
     const ref = { current: null as AudioContext | null };
     expect(() => playSoundCue(ref, "exact")).not.toThrow();
     expect(ref.current).toBeNull();
+    closeSoundContext(ref);
+
+    vi.stubGlobal("window", {});
+    expect(() => playSoundCue(ref, "close")).not.toThrow();
+    expect(ref.current).toBeNull();
+  });
+
+  it("supports the prefixed browser constructor and contains constructor failures", () => {
+    const prefixedRef = { current: null as AudioContext | null };
+    vi.stubGlobal("window", { webkitAudioContext: FakeAudioContext });
+    expect(() => playSoundCue(prefixedRef, "start")).not.toThrow();
+    expect(audioTrace.instances).toHaveLength(1);
+
+    class BrokenAudioContext {
+      constructor() {
+        throw new Error("Audio is unavailable");
+      }
+    }
+    vi.stubGlobal("window", { AudioContext: BrokenAudioContext });
+    const brokenRef = { current: null as AudioContext | null };
+    expect(() => playSoundCue(brokenRef, "start")).not.toThrow();
+    expect(brokenRef.current).toBeNull();
+  });
+
+  it("contains playback and asynchronous audio lifecycle failures", async () => {
+    const brokenContext = Object.assign(new FakeAudioContext(), {
+      createOscillator: () => { throw new Error("Audio node creation failed"); },
+    }) as unknown as AudioContext;
+    const brokenRef = { current: brokenContext };
+    expect(() => playSoundCue(brokenRef, "exact")).not.toThrow();
+
+    const rejectingContext = new FakeAudioContext();
+    vi.spyOn(rejectingContext, "resume").mockRejectedValue(new Error("Audio resume was denied"));
+    const resumeRef = { current: rejectingContext as unknown as AudioContext };
+    expect(() => playSoundCue(resumeRef, "close")).not.toThrow();
+    await Promise.resolve();
+
+    vi.spyOn(rejectingContext, "close").mockRejectedValue(new Error("Audio close was denied"));
+    expect(() => closeSoundContext(resumeRef)).not.toThrow();
+    await Promise.resolve();
+    expect(resumeRef.current).toBeNull();
   });
 
   it("keeps cues quiet, short, and free of music-length layering", () => {

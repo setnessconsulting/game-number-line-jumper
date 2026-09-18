@@ -1,7 +1,7 @@
 import type { RoundSummary } from "./types";
 
 /**
- * Session-only visit bests (LEVELBEST-57).
+ * Session-only visit bests.
  *
  * The visit is the current page session: state lives in React memory only
  * (no web storage, cookies, or network of any kind) and a reload starts

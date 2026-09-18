@@ -4,14 +4,106 @@ on:
   push:
     branches: [main, "codex/**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    outputs:
+      game_code_changed: ${{ steps.classify.outputs.game_code_changed }}
+      run_browser: ${{ steps.classify.outputs.run_browser }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            game_code_changed=true
+            run_browser=true
+          elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            game_code_changed=true
+            run_browser=true
+          else
+            changed_paths="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+            game_code_changed=false
+            while IFS= read -r path; do
+              [[ -z "$path" ]] && continue
+              case "$path" in
+                README.md|CONTRIBUTING.md|docs/*) ;;
+                *) game_code_changed=true; break ;;
+              esac
+            done <<< "$changed_paths"
+            run_browser="$game_code_changed"
+          fi
+          echo "game_code_changed=$game_code_changed" >> "$GITHUB_OUTPUT"
+          echo "run_browser=$run_browser" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      npm_ci: ${{ steps.npm_ci.outcome }}
+      typecheck: ${{ steps.typecheck.outcome }}
+      lint: ${{ steps.lint.outcome }}
+      coverage: ${{ steps.coverage.outcome }}
+      build: ${{ steps.build.outcome }}
+      host_build: ${{ steps.host_build.outcome }}
+      ip: ${{ steps.ip.outcome }}
+      bundle: ${{ steps.bundle.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - id: npm_ci
+        run: npm ci
+      - id: typecheck
+        run: npm run typecheck
+      - id: lint
+        run: npm run lint
+      - id: coverage
+        run: npm run test:coverage
+      - id: build
+        run: npm run build
+      - id: host_build
+        run: npm run build:host-test
+      - id: ip
+        run: npm run check:ip
+      - id: bundle
+        run: npm run check:bundle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-verification-${{ github.sha }}
+          path: |
+            dist/
+            dist-host/
+            coverage/coverage-summary.json
+            coverage/lcov.info
+            node_modules/playwright-core/browsers.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  browser:
+    needs: [changes, verify]
+    if: needs.verify.result == 'success' && needs.changes.outputs.run_browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      e2e: ${{ steps.e2e.outcome }}
+      a11y: ${{ steps.a11y.outcome }}
+      host: ${{ steps.host.outcome }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,7 +111,74 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-verification-${{ github.sha }}
+          path: .
+      - run: npx playwright install --with-deps chromium webkit
+      - id: e2e
+        run: npm run test:e2e:run
+      - id: a11y
+        run: npm run test:a11y:run
+      - id: host
+        run: npm run test:host:run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-browser-results-${{ github.sha }}
+          path: |
+            test-results/
+            playwright-report/
+            playwright-report-a11y/
+            playwright-report-host/
+          if-no-files-found: warn
+          retention-days: 90
+
+  evidence:
+    if: always()
+    needs: [changes, verify, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - id: npm_version
+        run: echo "version=$(npm --version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: needs.verify.result != 'cancelled'
+        continue-on-error: true
+        with:
+          name: game-verification-${{ github.sha }}
+          path: .
+      - name: Write commit-bound CI evidence
+        if: always()
+        env:
+          NPM_VERSION: ${{ steps.npm_version.outputs.version }}
+          CHANGE_JOB_RESULT: ${{ needs.changes.result }}
+          VERIFY_JOB_RESULT: ${{ needs.verify.result }}
+          BROWSER_JOB_RESULT: ${{ needs.browser.result }}
+          GAME_CODE_CHANGED: ${{ needs.changes.outputs.game_code_changed }}
+          GATE_NPM_CI: ${{ needs.verify.outputs.npm_ci }}
+          GATE_TYPECHECK: ${{ needs.verify.outputs.typecheck }}
+          GATE_LINT: ${{ needs.verify.outputs.lint }}
+          GATE_COVERAGE: ${{ needs.verify.outputs.coverage }}
+          GATE_BUILD: ${{ needs.verify.outputs.build }}
+          GATE_HOST_BUILD: ${{ needs.verify.outputs.host_build }}
+          GATE_IP: ${{ needs.verify.outputs.ip }}
+          GATE_BUNDLE: ${{ needs.verify.outputs.bundle }}
+          BROWSER_E2E: ${{ needs.browser.outputs.e2e }}
+          BROWSER_A11Y: ${{ needs.browser.outputs.a11y }}
+          BROWSER_HOST: ${{ needs.browser.outputs.host }}
+        run: node scripts/write-ci-evidence.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-ci-evidence-${{ github.sha }}
+          path: ci-evidence/ci-evidence.json
+          if-no-files-found: error
+          retention-days: 90
