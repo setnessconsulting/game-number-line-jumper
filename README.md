@@ -2,6 +2,25 @@
 
 This repository is the authoritative implementation, build, test, and release-artifact source for Number Line Jumper under GAME-3. It is a standalone React + TypeScript application and does not require the historical LevelBest repository.
 
+## Active documentation
+
+The canonical product/design/architecture package is under `docs/games/number-line-jumper/`:
+
+- `REQUIREMENTS.md`
+- `UX_DESIGN.md`
+- `PROTOTYPE_NOTES.md`
+- `EPIC_PLAN.md`
+- `SPRINT_READINESS.md`
+- `BENCHMARK_REVIEW.md`
+
+The existing flat documents are supporting evidence or contract detail rather than competing product requirements sources:
+
+- `docs/PARITY.md` — GAME-291 source provenance and extraction/parity evidence.
+- `docs/HOST_CONTRACT.md` — GAME-292 host-contract detail.
+- `docs/GAMES_SITE_RELEASE.md` — GAME-293 build/publication mechanics.
+
+Those supporting files do not imply that downstream Figma, benchmark, owner-observed, production-promotion, or final-acceptance gates have passed.
+
 ## Source provenance
 
 The game was extracted from the executable shipping implementation, not reconstructed from Jira prose:
