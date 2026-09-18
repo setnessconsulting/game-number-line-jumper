@@ -76,3 +76,17 @@ Remote branch `codex/game-291-bootstrap` was cloned at `8b72de3ec0feb3d516ebcd89
 - `npm run build`: PASS; Vite transformed 23 modules and produced `dist/`.
 - `GAME_NLJ_E2E_PORT=4191 npm run test:e2e`: PASS; 13 browser tests passed and 1 desktop mobile-only test was intentionally skipped across Chromium desktop and mobile projects.
 - Clean-clone git status after verification: PASS; no tracked changes.
+
+## GAME-218 CI quality gates
+
+The standalone repository now owns the PR/main quality gate; browser checks do not depend on the legacy application repository.
+
+- `npm run test:coverage` runs the 11 Vitest files with V8 coverage. The denominator is explicit: the game engine, aggregates, adaptive logic, visit bests, sound, Explore prompt, host contract, placement adapter, and seeded random helper. Each runtime module is held to at least 90% lines, branches, and functions. The type-only `types.ts` declarations are intentionally excluded because they emit no runtime behavior; no executable critical module is excluded.
+- The production browser config uses desktop Chromium and mobile WebKit against the normal production build on port 4173. Accessibility checks use that same build on port 4174. GAME-292 host-lifecycle journeys run against a separate test-only host-harness build on port 4175, not in the learner artifact.
+- A shared Playwright fixture fails tests on browser console errors and uncaught page errors. Playwright retry count is zero in every config; traces and reports preserve original failures.
+- CI always performs typecheck, lint, unit/coverage, production and host-test builds, the source/IP scan, and learner-bundle assertion. It classifies README/docs-only diffs to skip only the expensive browser matrix; a manual `workflow_dispatch` runs the complete matrix regardless of changed paths.
+- The verification artifact reuses the learner production build across the browser and accessibility suites and includes `coverage-summary.json` plus `lcov.info`. Browser reports/traces are published separately.
+- `game-ci-evidence-<workflow-sha>` contains the PR source SHA (or pushed commit SHA), workflow SHA, check outcomes, package-lock digest, Node/npm/Playwright/Vitest and pinned Chromium/WebKit versions, coverage totals, and SHA-256 digests for production assets. Artifacts are retained for 90 days; GAME-224 must preserve any accepted release evidence in its durable manifest.
+- The IP separation scan checks shipped `src/`, optional `public/`, `index.html`, and production `dist/`; README/docs and tests remain separate. GAME-222's benchmark remediation ledger is still deferred and is not invented or included in this change. The bundle assertion allows only React/React DOM as direct runtime dependencies and rejects known prohibited runtime packages, asset paths, and bundle markers.
+
+Local full-gate parity is `npm run test:ci`. Individual browser commands are also documented in `README.md`. Hosted CI is authoritative for PR/main evidence; docs-only browser skips are explicitly marked `skipped-docs-only` in the evidence artifact and are not full release qualification.

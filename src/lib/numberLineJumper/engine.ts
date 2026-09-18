@@ -24,7 +24,7 @@ import {
 import type { AdaptiveBias, AdaptiveSide, NormalizedHotZone } from "./adaptive";
 
 // ---------------------------------------------------------------------------
-// Deterministic PRNG — moved to the shared games module (MD-01).
+// Deterministic PRNG re-exported from the shared game utility module.
 // Re-exported here so existing call sites and tests keep working; the
 // algorithm is byte-for-byte the legacy one.
 // ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ export function rangesForFraction(band: PlacementBand): readonly Range[] {
 }
 
 // ---------------------------------------------------------------------------
-// Zoomable Explore extension (GAME-5) — Motion Math Zoom's signature mechanic.
+// Zoomable Explore extension for unscored scale comprehension.
 // The zoom line is a fixed anchor span of −10…1000 whose visible window is a
 // sub-interval chosen by integer zoom level. Tick subdivision follows powers
 // of 10 so labels stay readable at every scale. Pure math only — no UI, no
@@ -879,7 +879,7 @@ export function generateRoundTargets(
 // Scoring
 // ---------------------------------------------------------------------------
 
-/** Relative-error tiers shared with the sound cue pitch mapping (LEVELBEST-58). */
+/** Relative-error tiers shared with the sound cue pitch mapping. */
 export const EXACT_THRESHOLD = 0.05; // ≤ 5 %
 export const CLOSE_THRESHOLD = 0.15; // ≤ 15 %
 

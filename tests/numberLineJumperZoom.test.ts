@@ -7,6 +7,8 @@ import {
   exploreZoomPan,
   exploreZoomTicks,
   exploreZoomWindow,
+  scorePlacement,
+  targetRevealAnnouncement,
   valueAtPosition,
 } from "@/lib/numberLineJumper/engine";
 
@@ -134,5 +136,16 @@ describe("GAME-5 zoomable Explore — readout contract", () => {
   it("degenerate norm mapping lands on the midpoint, never NaN", () => {
     expect(exploreZoomNormForValue(5, { min: 5, max: 5 })).toBe(0.5);
     expect(exploreZoomNormForValue(Number.NaN, { min: 0, max: 10 })).toBe(0.5);
+  });
+
+  it("keeps zero-span reveal, scoring, and zoom fallbacks finite", () => {
+    const point = { min: 5, max: 5 };
+    const target = { value: 5, display: "5", kind: "whole" as const, range: point };
+
+    expect(targetRevealAnnouncement(target)).toContain("50 percent");
+    expect(scorePlacement(0.8, target)).toMatchObject({ error: 0, targetNormalized: 0.5, direction: "spot" });
+    expect(exploreZoomWindow(1, 0.5, point)).toEqual(exploreZoomWindow(1, 0.5, { min: 7, max: 7 }));
+    expect(exploreZoomPan(point, 1)).toEqual(EXPLORE_ZOOM_ANCHOR);
+    expect(exploreZoomPan({ min: Number.NaN, max: Number.NaN }, -1)).toEqual(EXPLORE_ZOOM_ANCHOR);
   });
 });

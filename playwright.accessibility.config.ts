@@ -7,11 +7,13 @@ const baseURL = externalBaseUrl ?? `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: "./tests/accessibility",
   testMatch: /.*\.a11y\.spec\.ts/,
+  outputDir: "test-results/accessibility",
   timeout: 90_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
   workers: 1,
-  reporter: "list",
+  retries: 0,
+  reporter: [["list"], ["html", { outputFolder: "playwright-report-a11y", open: "never" }]],
   use: {
     baseURL,
     trace: "retain-on-failure",

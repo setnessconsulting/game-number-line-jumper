@@ -3,9 +3,13 @@
 
 # build and test output
 /dist
+/dist-host
 /coverage
 /test-results
 /playwright-report
+/playwright-report-a11y
+/playwright-report-host
+/ci-evidence
 *.tsbuildinfo
 
 # local environment and debug output

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "../browserErrorFixture";
+import type { Page } from "@playwright/test";
 
 async function openJumper(page: Page) {
   await page.goto("/");
@@ -48,7 +49,7 @@ test.describe("Number Line Jumper browser flow", () => {
   });
 
   test("keeps the number line inside a mobile viewport", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "The touch-target assertion belongs to the mobile project.");
+    test.skip(testInfo.project.name !== "mobile-webkit", "The touch-target assertion belongs to the mobile project.");
     await openJumper(page);
     await page.getByRole("button", { name: /Grades 1/ }).click();
     await page.getByRole("button", { name: "Start guided round" }).click();

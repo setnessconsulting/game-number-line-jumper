@@ -7,15 +7,19 @@ export default defineConfig(
   globalIgnores([
     "node_modules/**",
     "dist/**",
+    "dist-host/**",
     "coverage/**",
     "test-results/**",
     "playwright-report/**",
+    "playwright-report-a11y/**",
+    "playwright-report-host/**",
+    "ci-evidence/**",
     "*.tsbuildinfo",
   ]),
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "*.config.{ts,mjs}"],
+    files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "scripts/**/*.mjs", "*.config.{ts,mjs}"],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

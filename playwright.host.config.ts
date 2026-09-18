@@ -1,20 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = process.env.GAME_NLJ_E2E_PORT ?? "4173";
-const externalBaseUrl = process.env.GAME_NLJ_E2E_BASE_URL;
+const port = process.env.GAME_NLJ_HOST_PORT ?? "4175";
+const externalBaseUrl = process.env.GAME_NLJ_HOST_BASE_URL;
 const baseURL = externalBaseUrl ?? `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: /.*\.spec\.ts/,
-  testIgnore: ["**/numberLineJumperHost.spec.ts"],
-  outputDir: "test-results/e2e",
+  testMatch: /.*numberLineJumperHost\.spec\.ts/,
+  outputDir: "test-results/host",
   timeout: 90_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
+  reporter: [["list"], ["html", { outputFolder: "playwright-report-host", open: "never" }]],
   use: {
     baseURL,
     trace: "retain-on-failure",
@@ -22,13 +21,12 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : {
-        command: `npm run preview -- --host 127.0.0.1 --port ${port}`,
+        command: `npm run preview:host-test -- --host 127.0.0.1 --port ${port}`,
         url: `${baseURL}/`,
         reuseExistingServer: false,
         timeout: 120_000,
       },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } } },
-    { name: "mobile-webkit", use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, browserName: "webkit" } },
   ],
 });

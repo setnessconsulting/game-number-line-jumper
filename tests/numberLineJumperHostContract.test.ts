@@ -30,6 +30,75 @@ describe("GAME-292 versioned host contract", () => {
     expect(mapPlacementResultToBand({ status: "incomplete", level: 8 })).toBeNull();
     expect(mapPlacementResultToBand({ status: "complete", level: 9 })).toBeNull();
     expect(mapPlacementResultToBand({ status: "complete", level: Number.NaN })).toBeNull();
+    expect(mapPlacementResultToBand(null)).toBeNull();
+    expect(mapPlacementResultToBand([])).toBeNull();
+    expect(mapPlacementResultToBand("complete")).toBeNull();
+    expect(mapPlacementResultToBand({ status: "complete", level: 1.5 })).toBeNull();
+    expect(mapPlacementResultToBand({ status: "complete", level: 0 })).toBeNull();
+    expect(mapPlacementResultToBand({ status: "complete", level: "3" })).toBeNull();
+  });
+
+  it("keeps explicit host choices authoritative and reports malformed optional values", () => {
+    const resolved = resolveHostContractV1({
+      version: HOST_CONTRACT_VERSION,
+      mode: "free",
+      initialBand: "g78",
+      placementResult: { status: "complete", level: 1 },
+      autoStart: "yes",
+      sessionContext: { surface: "lesson" },
+      callbacks: { onExit: "not a callback" },
+    });
+
+    expect(resolved).toMatchObject({ initialBand: "g78", autoStart: false, sessionContext: { surface: "lesson" } });
+    expect(resolved.errors.map(({ code }) => code)).toEqual([
+      "INVALID_HOST_CALLBACKS",
+      "INVALID_AUTO_START",
+    ]);
+
+    const invalid = resolveHostContractV1({
+      version: HOST_CONTRACT_VERSION,
+      mode: "free",
+      initialBand: "g99",
+      sessionContext: { surface: "parent", launchReason: "other" },
+      callbacks: null,
+    });
+    expect(invalid.errors.map(({ code }) => code)).toEqual([
+      "INVALID_HOST_CALLBACKS",
+      "INVALID_INITIAL_BAND",
+      "INVALID_SESSION_CONTEXT",
+    ]);
+  });
+
+  it("fails safely for non-object contracts, arrays, and invalid modes", () => {
+    for (const input of [null, "host", 3, []]) {
+      expect(resolveHostContractV1(input).errors[0]?.code).toBe("INVALID_HOST_CONTRACT");
+    }
+    expect(resolveHostContractV1({ version: HOST_CONTRACT_VERSION, mode: "challenge" }).errors[0]?.code)
+      .toBe("INVALID_MODE");
+  });
+
+  it("omits invalid time limits and downgrades an unbounded break to free play", () => {
+    const invalidTimeLimits: unknown[] = [
+      null,
+      { kind: "remaining", remainingMs: "500" },
+      { kind: "remaining", remainingMs: -1 },
+      { kind: "deadline", deadlineEpochMs: Number.POSITIVE_INFINITY },
+      { kind: "unknown", value: 10 },
+    ];
+
+    for (const timeLimit of invalidTimeLimits) {
+      const result = resolveHostContractV1({
+        version: HOST_CONTRACT_VERSION,
+        mode: "break",
+        timeLimit,
+        callbacks: { onReturnToPractice: () => undefined },
+      });
+      expect(result.mode).toBe("free");
+      expect(result.errors.map(({ code }) => code)).toEqual([
+        "INVALID_TIME_LIMIT",
+        "BREAK_TIME_LIMIT_REQUIRED",
+      ]);
+    }
   });
 
   it("auto-starts from a valid placement and falls back to manual selection for invalid placement", () => {
@@ -174,6 +243,27 @@ describe("GAME-292 versioned host contract", () => {
     expect(onReturn).not.toHaveBeenCalled();
   });
 
+  it("deduplicates errors, contains a throwing error handler, and supports explicit reactivation", () => {
+    const onError = vi.fn(() => { throw new Error("error handler is also untrusted"); });
+    const sink = createHostEventSinkV1({ onError });
+    const error = {
+      version: HOST_CONTRACT_VERSION,
+      severity: "recoverable" as const,
+      code: "INVALID_TIME_LIMIT" as const,
+      message: "The bounded time limit is invalid.",
+    };
+
+    expect(() => sink.reportError(error)).not.toThrow();
+    sink.reportError({ ...error, message: "same error identity" });
+    expect(onError).toHaveBeenCalledTimes(1);
+    sink.dispose();
+    sink.reportError({ ...error, code: "INVALID_MODE" });
+    expect(onError).toHaveBeenCalledTimes(1);
+    sink.activate();
+    expect(() => sink.reportError({ ...error, code: "INVALID_MODE" })).not.toThrow();
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+
   it("expires at the deadline once and cancels cleanly on unmount", () => {
     let now = 1_000;
     let scheduled: (() => void) | undefined;
@@ -212,5 +302,38 @@ describe("GAME-292 versioned host contract", () => {
     expect(cancelled).toBe(true);
     expect(afterUnmount).not.toHaveBeenCalled();
     cleanup();
+  });
+
+  it("expires immediately for a past deadline and caps long scheduler intervals", () => {
+    const immediate = vi.fn();
+    const cancel = vi.fn();
+    const schedule = vi.fn(() => 1);
+    const cleanupImmediate = scheduleDeadlineV1(10, {
+      now: () => 10,
+      schedule,
+      cancel,
+    }, immediate);
+    expect(immediate).toHaveBeenCalledOnce();
+    expect(schedule).not.toHaveBeenCalled();
+    cleanupImmediate();
+    expect(cancel).not.toHaveBeenCalled();
+
+    let now = 0;
+    let nextTick: (() => void) | undefined;
+    const delays: number[] = [];
+    const cleanupLong = scheduleDeadlineV1(2_147_483_648 + 10_000, {
+      now: () => now,
+      schedule(callback, delayMs) {
+        nextTick = callback;
+        delays.push(delayMs);
+        return delays.length;
+      },
+      cancel: vi.fn(),
+    }, vi.fn());
+    expect(delays[0]).toBe(2_147_483_647);
+    now = 2_147_483_648;
+    nextTick?.();
+    expect(delays[1]).toBe(10_000);
+    cleanupLong();
   });
 });

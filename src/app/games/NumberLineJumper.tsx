@@ -195,7 +195,7 @@ export default function NumberLineJumper({
   const [showHint, setShowHint] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [announce, setAnnounce] = useState("");
-  // Visit bests live in React memory for this page session only (LEVELBEST-57).
+  // Visit bests live in React memory for this page session only.
   // Null until a first completed run; a remount/reload starts a fresh visit.
   const [visitBests, setVisitBests] = useState<VisitBests | null>(null);
   const [visitDelta, setVisitDelta] = useState({ averageError: false, closeStreak: false });
@@ -319,7 +319,7 @@ export default function NumberLineJumper({
         context: hostRuntime.sessionContext,
       });
     }
-    // Fold the finished run into the session-only visit bests (LEVELBEST-57).
+    // Fold the finished run into the session-only visit bests.
     // Uses the trials/visit refs so timer callbacks never see stale state.
     const result = updateVisitBests(visitBestsRef.current, summarizeRound(trialsRef.current));
     visitBestsRef.current = result.bests;
@@ -1001,7 +1001,7 @@ export default function NumberLineJumper({
 
   if (phase === "done" && band) {
     const summary = summarizeRound(trials);
-    // Single source of truth for the close-rate display (LEVELBEST-61): the
+    // Single source of truth for the close-rate display: the
     // session aggregate owns the percent-close math; the summary renders it.
     const aggregates = sessionAggregates({ trials });
     const closeRate = Math.round(aggregates.pctClose ?? 0);

@@ -169,6 +169,7 @@ describe("generateTarget — g56 (decimals + fractions)", () => {
 
   it("adds 0–2 and 0–3 only to fraction generation", () => {
     expect(rangesForBand("g56")).toEqual([{ min: 0, max: 1 }, { min: 0, max: 10 }]);
+    expect(rangesForFraction("g12")).toEqual(rangesForBand("g12"));
     expect(rangesForFraction("g56")).toEqual([
       { min: 0, max: 1 },
       { min: 0, max: 10 },

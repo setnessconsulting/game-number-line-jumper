@@ -1,5 +1,5 @@
 /**
- * Number Line Jumper — session aggregate contract (LEVELBEST-61).
+ * Number Line Jumper — session aggregate contract.
  *
  * A pure, typed aggregate over one visit's scored trials. The structure is
  * the future Tier-1 parent-brief handoff seam: the free site computes it in

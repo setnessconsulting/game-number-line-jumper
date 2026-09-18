@@ -1,7 +1,6 @@
 /**
- * Shared deterministic PRNG for all LevelBest games.
- * Single source of truth: numberLineJumper re-exports this so legacy
- * call sites keep working (MD-01 parity requirement — identical algorithm).
+ * Shared deterministic PRNG used by the game's mathematical engine.
+ * Number Line Jumper re-exports this helper so callers use one algorithm.
  */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
