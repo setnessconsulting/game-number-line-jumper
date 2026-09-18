@@ -552,11 +552,19 @@ export default function NumberLineJumper({
           startDistance: Math.max(1, Math.abs(xs[0]! - xs[xs.length - 1]!)),
           startLevel: exploreZoom,
         };
-        event.currentTarget.setPointerCapture(event.pointerId);
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // A pointer can disappear before capture on synthetic/headless or interrupted input.
+        }
         return;
       }
     }
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Continue the interaction even when capture is unavailable.
+    }
     draggingRef.current = true;
     setActiveNorm(normFromClientX(event.clientX));
   }
