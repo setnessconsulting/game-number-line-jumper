@@ -10,6 +10,7 @@
 /playwright-report-a11y
 /playwright-report-host
 /ci-evidence
+/release-evidence
 *.tsbuildinfo
 
 # local environment and debug output
