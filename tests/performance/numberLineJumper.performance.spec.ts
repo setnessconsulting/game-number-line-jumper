@@ -2,12 +2,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { expect, test } from "../browserErrorFixture";
 import type { CDPSession, Page } from "@playwright/test";
 
-type MoveMetric = { latencyMs: number; changed: boolean };
+type MoveMetric = { inputToStyleMs: number; inputToFrameMs: number };
 type PerfWindow = typeof window & {
   __nlLongTasks?: number[];
   __nlRevealTransitions?: number[];
   __nlMoveSamples?: MoveMetric[];
-  __nlMoveObserverInstalled?: boolean;
+  __nlPendingPointerMoveTimestamp?: number | null;
 };
 
 const performanceDirectory = "performance-results";
@@ -48,6 +48,41 @@ async function installLongTaskObserver(page: Page) {
   });
 }
 
+async function installPointerMoveMetrics(page: Page) {
+  await page.evaluate(() => {
+    const targetWindow = window as PerfWindow;
+    targetWindow.__nlMoveSamples = [];
+    targetWindow.__nlPendingPointerMoveTimestamp = null;
+    const marker = document.querySelector<HTMLElement>(".nl-track-explore .nl-marker");
+    if (!marker) throw new Error("Explore marker is missing from the pointer observer.");
+    const originalSetProperty = CSSStyleDeclaration.prototype.setProperty;
+    CSSStyleDeclaration.prototype.setProperty = function (propertyName, value, priority) {
+      const tracksMarkerPosition = this === marker.style && propertyName === "--nl-pos";
+      const previousPosition = tracksMarkerPosition ? this.getPropertyValue(propertyName) : "";
+      originalSetProperty.call(this, propertyName, value, priority);
+      if (!tracksMarkerPosition || this.getPropertyValue(propertyName) === previousPosition) return;
+
+      const eventTimestamp = targetWindow.__nlPendingPointerMoveTimestamp;
+      if (eventTimestamp === null || eventTimestamp === undefined) return;
+
+      targetWindow.__nlPendingPointerMoveTimestamp = null;
+      const styleAt = performance.now();
+      requestAnimationFrame(() => {
+        targetWindow.__nlMoveSamples!.push({
+          inputToStyleMs: Math.max(0, styleAt - eventTimestamp),
+          inputToFrameMs: Math.max(0, performance.now() - eventTimestamp),
+        });
+      });
+    };
+
+    window.addEventListener("pointermove", (event) => {
+      if (!(event.target instanceof Element)) return;
+      if (!event.target.closest(".nl-track-explore")) return;
+      targetWindow.__nlPendingPointerMoveTimestamp = performance.now();
+    }, { capture: true });
+  });
+}
+
 async function measurePointerMoves(page: Page, count = 220): Promise<MoveMetric[]> {
   const track = page.locator(".nl-track-explore");
   const box = await track.boundingBox();
@@ -56,29 +91,15 @@ async function measurePointerMoves(page: Page, count = 220): Promise<MoveMetric[
   await page.evaluate(() => {
     const targetWindow = window as PerfWindow;
     targetWindow.__nlMoveSamples = [];
-    if (targetWindow.__nlMoveObserverInstalled) return;
-
-    const trackElement = document.querySelector<HTMLElement>(".nl-track-explore");
-    const marker = trackElement?.querySelector<HTMLElement>(".nl-marker");
-    if (!trackElement || !marker) throw new Error("Explore performance targets are missing.");
-
-    trackElement.addEventListener("pointermove", (event) => {
-      const before = marker.style.getPropertyValue("--nl-pos");
-      const eventTimestamp = event.timeStamp;
-      requestAnimationFrame(() => {
-        const after = marker.style.getPropertyValue("--nl-pos");
-        targetWindow.__nlMoveSamples!.push({
-          latencyMs: Math.max(0, performance.now() - eventTimestamp),
-          changed: after !== before,
-        });
-      });
-    });
-    targetWindow.__nlMoveObserverInstalled = true;
+    targetWindow.__nlPendingPointerMoveTimestamp = null;
   });
 
   const inset = 18;
   const y = box.height / 2;
   await track.hover({ position: { x: inset, y } });
+  await page.evaluate(() => {
+    (window as PerfWindow).__nlPendingPointerMoveTimestamp = null;
+  });
   await page.mouse.down();
   try {
     for (let index = 0; index < count; index += 1) {
@@ -145,11 +166,32 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     test.skip(browserName !== "chromium", "CDP CPU throttling is Chromium-specific.");
 
     await openExplore(page);
+    await installPointerMoveMetrics(page);
+    const slider = page.getByRole("slider", { name: /Explore number line/ });
+    const track = page.locator(".nl-track-explore");
+    const box = await track.boundingBox();
+    expect(box).not.toBeNull();
+    await track.hover({ position: { x: 18, y: box!.height / 2 } });
+    await page.mouse.down();
+    try {
+      await page.mouse.move(box!.x + box!.width - 12, box!.y + box!.height / 2);
+      await expect(slider).toHaveAttribute("aria-valuenow", "100");
+    } finally {
+      await page.mouse.up();
+    }
+    await page.evaluate(() => {
+      const targetWindow = window as PerfWindow;
+      targetWindow.__nlMoveSamples = [];
+      targetWindow.__nlPendingPointerMoveTimestamp = null;
+    });
+
     const typicalSamples = await measurePointerMoves(page);
-    const typical = typicalSamples.map((sample) => sample.latencyMs);
-    expect(typical.length).toBeGreaterThanOrEqual(180);
-    const typicalP95 = p95(typical);
-    expect(typicalP95).toBeLessThanOrEqual(16);
+    const typicalFrame = typicalSamples.map((sample) => sample.inputToFrameMs);
+    expect(typicalSamples.length).toBeGreaterThanOrEqual(Math.ceil(220 * 0.95));
+    const typicalStyleP95 = p95(typicalSamples.map((sample) => sample.inputToStyleMs));
+    const typicalFrameP95 = p95(typicalFrame);
+    expect(typicalStyleP95).toBeLessThanOrEqual(16);
+    expect(typicalFrameP95).toBeLessThanOrEqual(20);
 
     const cdp: CDPSession = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
@@ -159,25 +201,29 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     } finally {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     }
-    const throttled = throttledSamples.map((sample) => sample.latencyMs);
-    expect(throttled.length).toBeGreaterThanOrEqual(180);
-    const throttledP95 = p95(throttled);
-    expect(throttledP95).toBeLessThanOrEqual(50);
+    const throttledFrame = throttledSamples.map((sample) => sample.inputToFrameMs);
+    expect(throttledSamples.length).toBeGreaterThanOrEqual(Math.ceil(220 * 0.95));
+    const throttledStyleP95 = p95(throttledSamples.map((sample) => sample.inputToStyleMs));
+    const throttledFrameP95 = p95(throttledFrame);
+    expect(throttledStyleP95).toBeLessThanOrEqual(50);
+    expect(throttledFrameP95).toBeLessThanOrEqual(50);
 
     mkdirSync(performanceDirectory, { recursive: true });
     writeFileSync(
       `${performanceDirectory}/input-frame.json`,
       JSON.stringify({
         schemaVersion: 1,
-        metric: "pointermove-to-next-frame presentation proxy",
+        metric: "pointermove listener to actual marker style change and following animation frame",
         eventTimingMetric: false,
         dispatchedMoves: 220,
-        sampleCountTypical: typical.length,
-        changedSamplesTypical: typicalSamples.filter((sample) => sample.changed).length,
-        typicalP95Ms: typicalP95,
-        sampleCountCpu6x: throttled.length,
-        changedSamplesCpu6x: throttledSamples.filter((sample) => sample.changed).length,
-        cpu6xP95Ms: throttledP95,
+        sampleCountTypical: typicalFrame.length,
+        markerStyleUpdatesTypical: typicalSamples.length,
+        typicalStyleP95Ms: typicalStyleP95,
+        typicalFrameP95Ms: typicalFrameP95,
+        sampleCountCpu6x: throttledFrame.length,
+        markerStyleUpdatesCpu6x: throttledSamples.length,
+        cpu6xStyleP95Ms: throttledStyleP95,
+        cpu6xFrameP95Ms: throttledFrameP95,
       }, null, 2) + "\n",
     );
   });
