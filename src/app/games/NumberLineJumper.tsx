@@ -216,6 +216,9 @@ export default function NumberLineJumper({
   const visitBestsRef = useRef<VisitBests | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<HTMLDivElement>(null);
+  const pendingPointerNormRef = useRef<number | null>(null);
+  const pointerFrameRef = useRef<number | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -486,6 +489,10 @@ export default function NumberLineJumper({
 
   useEffect(() => () => clearAdvanceTimer(), [clearAdvanceTimer]);
 
+  useEffect(() => () => {
+    if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
+  }, []);
+
   useEffect(() => () => closeSoundContext(audioContextRef), []);
 
   useEffect(() => {
@@ -524,9 +531,40 @@ export default function NumberLineJumper({
   }
 
   function setActiveNorm(next: number) {
+    if (pointerFrameRef.current !== null) {
+      window.cancelAnimationFrame(pointerFrameRef.current);
+      pointerFrameRef.current = null;
+    }
+    pendingPointerNormRef.current = null;
     if (phase === "intro") setWarmupNorm(next);
     else if (phase === "explore") setExploreNorm(next);
     else setMarkerNorm(next);
+  }
+
+  function queuePointerNorm(next: number) {
+    pendingPointerNormRef.current = next;
+    markerRef.current?.style.setProperty("--nl-pos", String(next));
+    if (pointerFrameRef.current !== null) return;
+    pointerFrameRef.current = window.requestAnimationFrame(() => {
+      pointerFrameRef.current = null;
+      const pending = pendingPointerNormRef.current;
+      pendingPointerNormRef.current = null;
+      if (pending !== null) {
+        if (phase === "intro") setWarmupNorm(pending);
+        else if (phase === "explore") setExploreNorm(pending);
+        else setMarkerNorm(pending);
+      }
+    });
+  }
+
+  function flushPointerNorm() {
+    const pending = pendingPointerNormRef.current;
+    if (pointerFrameRef.current !== null) {
+      window.cancelAnimationFrame(pointerFrameRef.current);
+      pointerFrameRef.current = null;
+    }
+    pendingPointerNormRef.current = null;
+    if (pending !== null) setActiveNorm(pending);
   }
 
   function normFromClientX(clientX: number): number {
@@ -552,11 +590,19 @@ export default function NumberLineJumper({
           startDistance: Math.max(1, Math.abs(xs[0]! - xs[xs.length - 1]!)),
           startLevel: exploreZoom,
         };
-        event.currentTarget.setPointerCapture(event.pointerId);
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // A pointer can disappear before capture on synthetic/headless or interrupted input.
+        }
         return;
       }
     }
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Continue the interaction even when capture is unavailable.
+    }
     draggingRef.current = true;
     setActiveNorm(normFromClientX(event.clientX));
   }
@@ -577,23 +623,25 @@ export default function NumberLineJumper({
     if (!draggingRef.current || (phase !== "playing" && phase !== "intro" && phase !== "explore")) return;
     if (phase === "playing" && committed) return;
     if (phase === "intro" && warmupRevealed) return;
-    setActiveNorm(normFromClientX(event.clientX));
+    queuePointerNorm(normFromClientX(event.clientX));
   }
 
   function onPointerUp(event: PointerEvent<HTMLDivElement>) {
     if (phase === "explore" && explorePointersRef.current.has(event.pointerId)) {
       explorePointersRef.current.delete(event.pointerId);
       if (explorePointersRef.current.size < 2) pinchRef.current = null;
+      flushPointerNorm();
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
       } catch {
         // already released
       }
-      if (explorePointersRef.current.size === 1) draggingRef.current = true;
+      draggingRef.current = explorePointersRef.current.size === 1;
       return;
     }
     if (!draggingRef.current) return;
     draggingRef.current = false;
+    flushPointerNorm();
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
@@ -810,7 +858,7 @@ export default function NumberLineJumper({
             <div className="nl-mid-tick" aria-hidden="true" />
             <div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" />
             <div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" />
-            <div className={`nl-marker nl-marker-warmup ${warmupRevealed ? "nl-marker-reveal" : ""}`} style={posStyle(warmupNorm)} aria-hidden="true">
+            <div ref={markerRef} className={`nl-marker nl-marker-warmup ${warmupRevealed ? "nl-marker-reveal" : ""}`} style={posStyle(warmupNorm)} aria-hidden="true">
               <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
               <span className="nl-marker-label">Your practice estimate</span>
             </div>
@@ -946,7 +994,11 @@ export default function NumberLineJumper({
             <span>{formatRangeValue(range.max)}</span>
           </div>
           <div className="nl-tick-row" aria-hidden="true">
-            {ticks.majorTicks.map((tick) => <span key={tick} className="nl-tick-label">{formatValue(tick)}</span>)}
+            {ticks.majorTicks.map((tick) => (
+              <span key={tick} className="nl-tick-label" style={posStyle(exploreZoomNormForValue(tick, range))}>
+                {formatValue(tick)}
+              </span>
+            ))}
           </div>
           <div
             ref={trackRef}
@@ -981,7 +1033,7 @@ export default function NumberLineJumper({
               const norm = (tick - range.min) / (range.max - range.min);
               return <div key={tick} className="nl-zoom-tick" style={posStyle(norm)} aria-hidden="true" />;
             })}
-            <div className="nl-marker nl-marker-warmup" style={posStyle(exploreNorm)} aria-hidden="true">
+            <div ref={markerRef} className="nl-marker nl-marker-warmup" style={posStyle(exploreNorm)} aria-hidden="true">
               <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
               <span className="nl-marker-label">Jumper</span>
             </div>
@@ -1098,7 +1150,7 @@ export default function NumberLineJumper({
           <div className="nl-rail" aria-hidden="true" />
           <div className="nl-mid-tick" aria-hidden="true" />
           {showHint ? <><div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" /><div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" /></> : null}
-          <div className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""}`} style={posStyle(markerNorm)} aria-hidden="true">
+          <div ref={markerRef} className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""}`} style={posStyle(markerNorm)} aria-hidden="true">
             <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
             {committed ? <span className="nl-marker-label">Your estimate</span> : null}
           </div>

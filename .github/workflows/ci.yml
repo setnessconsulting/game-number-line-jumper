@@ -138,9 +138,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+
+  performance:
+    needs: [changes, verify]
+    if: needs.verify.result == 'success' && needs.changes.outputs.game_code_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      browser_perf: ${{ steps.browser_perf.outcome }}
+      bundle_budget: ${{ steps.bundle_budget.outcome }}
+      lighthouse: ${{ steps.lighthouse.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-verification-${{ github.sha }}
+          path: .
+      - run: npx playwright install --with-deps chromium firefox
+      - id: browser_perf
+        run: npm run test:performance:run
+      - id: bundle_budget
+        run: npm run perf:bundle
+      - id: lighthouse
+        run: npm run perf:lighthouse
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-performance-results-${{ github.sha }}
+          path: |
+            performance-results/
+            test-results-performance/
+            playwright-report-performance/
+          if-no-files-found: warn
+          retention-days: 90
+
   evidence:
     if: always()
-    needs: [changes, verify, browser]
+    needs: [changes, verify, browser, performance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,6 +197,12 @@ jobs:
         continue-on-error: true
         with:
           name: game-verification-${{ github.sha }}
+          path: .
+      - uses: actions/download-artifact@v4
+        if: needs.performance.result != 'cancelled' && needs.performance.result != 'skipped'
+        continue-on-error: true
+        with:
+          name: game-performance-results-${{ github.sha }}
           path: .
       - name: Write commit-bound CI evidence
         if: always()
@@ -174,6 +223,10 @@ jobs:
           BROWSER_E2E: ${{ needs.browser.outputs.e2e }}
           BROWSER_A11Y: ${{ needs.browser.outputs.a11y }}
           BROWSER_HOST: ${{ needs.browser.outputs.host }}
+          PERFORMANCE_JOB_RESULT: ${{ needs.performance.result }}
+          PERFORMANCE_BROWSER: ${{ needs.performance.outputs.browser_perf }}
+          PERFORMANCE_BUNDLE: ${{ needs.performance.outputs.bundle_budget }}
+          PERFORMANCE_LIGHTHOUSE: ${{ needs.performance.outputs.lighthouse }}
         run: node scripts/write-ci-evidence.mjs
       - uses: actions/upload-artifact@v4
         if: always()

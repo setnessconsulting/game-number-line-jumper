@@ -19,3 +19,6 @@
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+performance-results/
+playwright-report-performance/
+test-results-performance/

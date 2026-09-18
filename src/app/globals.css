@@ -106,16 +106,16 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-zoom-slider input[type="range"] { width: 100%; min-height: 48px; accent-color: var(--primary); }
 .nl-explore-prompt { display: grid; gap: 8px; justify-items: start; margin-top: 14px; color: var(--muted); }
 .nl-explore-prompt strong { color: var(--ink); }
-.nl-tick-row { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.nl-tick-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nl-zoom-tick { position: absolute; top: 8px; bottom: 8px; width: 1px; margin-left: -0.5px; background: #c0cbe0; pointer-events: none; }
+.nl-tick-row { position: relative; height: 18px; margin: 0 12px 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.nl-tick-label { position: absolute; left: calc(var(--nl-pos) * 100%); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); text-align: center; }
+.nl-zoom-tick { position: absolute; top: 8px; bottom: 8px; left: calc(12px + var(--nl-pos) * (100% - 24px)); width: 1px; margin-left: -0.5px; background: #c0cbe0; pointer-events: none; }
 .nl-status-tools { display: inline-flex; align-items: center; gap: 14px; }
 .nl-playing-sound-toggle { margin: 0; font-size: 12px; }
 .nl-playing-sound-toggle input { width: 15px; height: 15px; }
 .nl-track-wrap { margin-top: 28px; }
 .nl-labels { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 800; color: var(--muted); margin-bottom: 8px; }
 .nl-mid-label { color: var(--muted); font-weight: 700; font-size: 12px; }
-.nl-track { position: relative; height: 56px; cursor: pointer; user-select: none; border-radius: 14px; background: linear-gradient(180deg, #f8faff, #f0f3fa); border: 1px solid var(--line); box-shadow: 0 8px 20px rgba(31,48,83,.06); transition: border-color .18s ease, box-shadow .18s ease; }
+.nl-track { position: relative; container-type: inline-size; height: 56px; cursor: pointer; user-select: none; border-radius: 14px; background: linear-gradient(180deg, #f8faff, #f0f3fa); border: 1px solid var(--line); box-shadow: 0 8px 20px rgba(31,48,83,.06); transition: border-color .18s ease, box-shadow .18s ease; }
 .nl-track:not(.nl-track-locked):hover { border-color: #aab9f2; box-shadow: 0 10px 24px rgba(56,89,214,.1); }
 .nl-track:not(.nl-track-locked):focus-visible { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(56,89,214,.14); }
 .nl-track-locked { cursor: default; }
@@ -124,7 +124,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-quarter-tick { position: absolute; top: 50%; width: 1px; height: 11px; margin-top: -5px; background: #c0cbe0; pointer-events: none; }
 .nl-quarter-left { left: 25%; }
 .nl-quarter-right { left: 75%; }
-.nl-marker { --nl-pos: 0.5; position: absolute; top: 50%; left: calc(12px + var(--nl-pos) * (100% - 24px)); width: 28px; height: 28px; display: grid; place-items: center; z-index: 2; transform: translate(-50%, -50%); transition: left 0.04s linear; }
+.nl-marker { --nl-pos: 0.5; position: absolute; top: 50%; left: 12px; width: 28px; height: 28px; display: grid; place-items: center; z-index: 2; transform: translate3d(calc(var(--nl-pos) * (100cqw - 24px) - 50%), -50%, 0); transition: transform 0.04s linear; will-change: transform; }
 .nl-jumper-token { position: relative; width: 28px; height: 30px; display: grid; place-items: center; border: 3px solid white; border-radius: 11px 11px 9px 9px; background: var(--primary); box-shadow: 0 4px 12px rgba(56, 89, 214, 0.35); }
 .nl-jumper-token::after { content: ""; position: absolute; bottom: -6px; width: 10px; height: 7px; border-radius: 0 0 8px 8px; background: inherit; }
 .nl-marker-dot { position: relative; z-index: 1; width: 7px; height: 7px; border-radius: 50%; background: white; border: 0; box-shadow: none; transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease; }
