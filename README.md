@@ -37,13 +37,16 @@ npm run lint
 npm test
 npm run build
 npm run test:e2e
+npm run test:a11y
 ```
 
-`npm run test:e2e` builds a preview bundle with the local-only host harness, starts Vite preview, and runs the standalone browser journeys. The normal `npm run build` excludes the harness from the release artifact. Install the Playwright Chromium browser once when needed:
+`npm run test:e2e` builds a preview bundle with the local-only host harness, starts Vite preview, and runs the standalone browser journeys. The normal `npm run build` excludes the harness from the release artifact. Install the Playwright Chromium and WebKit browsers once when needed:
 
 ```text
-npx playwright install chromium
+npx playwright install chromium webkit
 ```
+
+`npm run test:a11y` builds the production artifact and runs axe, target-size, keyboard, reduced-motion, reflow, and network checks against desktop Chromium and mobile WebKit. Its current state coverage includes setup, Guided, Challenge, reveal/feedback, Explore zoom, and summary. GAME-220 wait-for-me reveal and GAME-235 hidden-tab pause coverage remain outstanding until those behaviors land; do not use this partial matrix as final accessibility-release evidence. Owner-observed NVDA/VoiceOver verification remains a separate GAME-224 gate.
 
 The app is intentionally privacy-minimal: game state and visit bests remain in React memory for the current page session. There are no accounts, trackers, telemetry, Sentry, gameplay network calls, or child-data persistence.
 

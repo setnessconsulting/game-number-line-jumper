@@ -21,6 +21,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "eslint.config.mjs"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.accessibility.config.ts", "eslint.config.mjs"],
   "exclude": ["node_modules", "dist", "coverage", "test-results", "playwright-report"]
 }

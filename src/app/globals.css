@@ -51,7 +51,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .button.primary { background: var(--primary); color: white; border-color: var(--primary); }
 .button.primary:hover { background: var(--primary-dark); }
 .button.subtle { background: rgba(255,255,255,.65); }
-.link-button { min-height: 44px; border: 0; background: none; color: var(--primary); font-weight: 800; cursor: pointer; text-decoration: underline; }
+.link-button { min-width: 48px; min-height: 48px; border: 0; background: none; color: var(--primary); font-weight: 800; cursor: pointer; text-decoration: underline; }
 .brief-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin: 20px 0; }
 .brief-box { padding: 16px; border-radius: 14px; background: #f7f9fc; border: 1px solid var(--line); }
 .brief-box span { display: block; color: var(--muted); font-size: 12px; font-weight: 700; margin-bottom: 5px; }
@@ -69,17 +69,17 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .subject-card span { color: var(--muted); font-size: 13px; font-weight: 700; }
 .subject-card:hover { border-color: #aab9f2; background: #f8f9ff; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.grade-chip { min-width: 46px; padding: 11px 14px; border-radius: 12px; cursor: pointer; background: white; border: 1px solid var(--line); font-weight: 800; }
-.grade-chip.small { padding: 9px 12px; font-size: 13px; }
+.grade-chip { min-width: 48px; min-height: 48px; padding: 11px 14px; border-radius: 12px; cursor: pointer; background: white; border: 1px solid var(--line); font-weight: 800; }
+.grade-chip.small { min-height: 48px; padding: 9px 12px; font-size: 13px; }
 .grade-chip.selected { border-color: var(--primary); background: #eef2ff; color: var(--primary-dark); }
 
 /* Number Line Jumper — extracted game presentation rules. */
-.nl-mode-picker { display: grid; gap: 10px; margin: 24px 0 0; padding: 0; border: 0; }
-.nl-mode-picker legend { margin-bottom: 2px; font-size: 16px; font-weight: 800; }
-.nl-mode-option { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcff; cursor: pointer; }
+.nl-mode-picker { display: grid; gap: 10px; width: 100%; min-width: 0; margin: 24px 0 0; padding: 0; border: 0; }
+.nl-mode-picker legend { display: block; width: 100%; max-width: calc(100vw - 64px); margin-bottom: 2px; font-size: 16px; font-weight: 800; white-space: normal; }
+.nl-mode-option { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcff; cursor: pointer; }
 .nl-mode-option:has(input:checked) { border-color: #aab9f2; background: #f4f6ff; }
 .nl-mode-option input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--primary); }
-.nl-mode-option span { display: grid; gap: 1px; }
+.nl-mode-option span { display: grid; min-width: 0; gap: 1px; }
 .nl-mode-option small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .nl-band-choice { margin-bottom: 12px; }
 .nl-band-choice .subject-card { width: 100%; }
@@ -96,17 +96,17 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-explore-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .55fr); gap: 16px; align-items: end; margin-top: 22px; }
 .nl-control-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 800; }
 .nl-range-select { display: grid; }
-.nl-range-select select { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); font-weight: 700; }
+.nl-range-select select { width: 100%; min-height: 48px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); font-weight: 700; }
 .nl-explore-readout { margin: 12px 0 0; color: var(--muted); text-align: center; }
 .nl-explore-readout strong { color: var(--ink); }
 .nl-zoom-controls { display: grid; gap: 8px; margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8faff; }
 .nl-zoom-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.nl-zoom-row .button { min-height: 44px; }
+.nl-zoom-row .button { min-height: 48px; }
 .nl-zoom-slider { flex: 1 1 160px; display: grid; }
-.nl-zoom-slider input[type="range"] { width: 100%; min-height: 44px; accent-color: var(--primary); }
+.nl-zoom-slider input[type="range"] { width: 100%; min-height: 48px; accent-color: var(--primary); }
 .nl-explore-prompt { display: grid; gap: 8px; justify-items: start; margin-top: 14px; color: var(--muted); }
 .nl-explore-prompt strong { color: var(--ink); }
-.nl-tick-row { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; color: #8a96ab; font-size: 11px; font-weight: 700; }
+.nl-tick-row { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .nl-tick-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nl-zoom-tick { position: absolute; top: 8px; bottom: 8px; width: 1px; margin-left: -0.5px; background: #c0cbe0; pointer-events: none; }
 .nl-status-tools { display: inline-flex; align-items: center; gap: 14px; }
@@ -114,7 +114,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-playing-sound-toggle input { width: 15px; height: 15px; }
 .nl-track-wrap { margin-top: 28px; }
 .nl-labels { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 800; color: var(--muted); margin-bottom: 8px; }
-.nl-mid-label { color: #8a96ab; font-weight: 700; font-size: 12px; }
+.nl-mid-label { color: var(--muted); font-weight: 700; font-size: 12px; }
 .nl-track { position: relative; height: 56px; cursor: pointer; user-select: none; border-radius: 14px; background: linear-gradient(180deg, #f8faff, #f0f3fa); border: 1px solid var(--line); box-shadow: 0 8px 20px rgba(31,48,83,.06); transition: border-color .18s ease, box-shadow .18s ease; }
 .nl-track:not(.nl-track-locked):hover { border-color: #aab9f2; box-shadow: 0 10px 24px rgba(56,89,214,.1); }
 .nl-track:not(.nl-track-locked):focus-visible { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(56,89,214,.14); }
@@ -154,7 +154,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-action-row .link-button { min-height: 50px; }
 .nl-keyboard-help { grid-column: 1 / -1; text-align: center; }
 .nl-hint { max-width: 620px; margin: 14px auto 0; padding: 10px 12px; border: 1px solid #c7d1e5; border-radius: 10px; background: #f2f5fb; color: var(--ink); font-size: 13px; text-align: center; }
-.nl-sound-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.nl-sound-toggle { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; max-width: 100%; min-height: 48px; padding: 6px 0; margin-top: 12px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .nl-sound-toggle input { width: 16px; height: 16px; accent-color: var(--primary); }
 .nl-summary-practice { display: grid; gap: 3px; max-width: 520px; margin: 0 auto 12px; padding: 12px 14px; border-radius: 12px; background: #f2f5fb; color: var(--ink); text-align: left; }
 .nl-summary-practice span { color: var(--muted); font-size: 13px; line-height: 1.4; }
@@ -162,6 +162,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-summary-insights strong { color: var(--primary-dark); }
 .nl-summary-insights ul { display: grid; gap: 5px; margin: 7px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
 .nl-summary-actions .button { color: var(--ink); }
+.nl-summary-actions .button.primary { color: white; }
 .nl-privacy-note { margin-top: 18px; }
 .nl-visit-bests { color: var(--muted); }
 .nl-visit-record strong { display: block; color: var(--primary-dark); }
@@ -179,6 +180,8 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
   .standalone-header h1 { font-size: clamp(40px, 11vw, 52px); }
   .standalone-footer { flex-direction: column; }
   .demo-panel { padding: 22px 16px; }
+  .demo-status { flex-wrap: wrap; }
+  .demo-status > span:first-child { flex: 1 1 100%; }
   .brief-grid { grid-template-columns: 1fr; }
   .nl-track { height: 72px; }
   .nl-marker { width: 40px; height: 40px; }
@@ -192,6 +195,8 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
   .nl-action-row { grid-template-columns: 1fr; }
   .nl-keyboard-help { grid-column: auto; }
   .nl-action-row .button, .nl-action-row .link-button { min-height: 52px; line-height: 1.25; }
+  .nl-summary-actions { flex-wrap: wrap; }
+  .nl-summary-actions > .button, .nl-summary-actions > .link-button { flex: 1 1 100%; }
   .nl-warmup-grid, .nl-explore-controls { grid-template-columns: 1fr; }
   .nl-explore-controls { gap: 12px; }
   .nl-range-select { width: 100%; }
