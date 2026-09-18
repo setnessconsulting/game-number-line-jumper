@@ -108,7 +108,7 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-explore-prompt strong { color: var(--ink); }
 .nl-tick-row { position: relative; height: 18px; margin: 0 12px 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .nl-tick-label { position: absolute; left: calc(var(--nl-pos) * 100%); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); text-align: center; }
-.nl-zoom-tick { position: absolute; top: 8px; bottom: 8px; width: 1px; margin-left: -0.5px; background: #c0cbe0; pointer-events: none; }
+.nl-zoom-tick { position: absolute; top: 8px; bottom: 8px; left: calc(12px + var(--nl-pos) * (100% - 24px)); width: 1px; margin-left: -0.5px; background: #c0cbe0; pointer-events: none; }
 .nl-status-tools { display: inline-flex; align-items: center; gap: 14px; }
 .nl-playing-sound-toggle { margin: 0; font-size: 12px; }
 .nl-playing-sound-toggle input { width: 15px; height: 15px; }
