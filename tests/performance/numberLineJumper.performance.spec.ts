@@ -146,7 +146,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
 
     await openExplore(page);
     const typicalSamples = await measurePointerMoves(page);
-    const typical = typicalSamples.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
+    const typical = typicalSamples.map((sample) => sample.latencyMs);
     expect(typical.length).toBeGreaterThanOrEqual(180);
     const typicalP95 = p95(typical);
     expect(typicalP95).toBeLessThanOrEqual(16);
@@ -159,7 +159,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     } finally {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     }
-    const throttled = throttledSamples.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
+    const throttled = throttledSamples.map((sample) => sample.latencyMs);
     expect(throttled.length).toBeGreaterThanOrEqual(180);
     const throttledP95 = p95(throttled);
     expect(throttledP95).toBeLessThanOrEqual(50);
@@ -173,8 +173,10 @@ test.describe("GAME-219 rendering and performance qualification", () => {
         eventTimingMetric: false,
         dispatchedMoves: 220,
         sampleCountTypical: typical.length,
+        changedSamplesTypical: typicalSamples.filter((sample) => sample.changed).length,
         typicalP95Ms: typicalP95,
         sampleCountCpu6x: throttled.length,
+        changedSamplesCpu6x: throttledSamples.filter((sample) => sample.changed).length,
         cpu6xP95Ms: throttledP95,
       }, null, 2) + "\n",
     );
