@@ -3,10 +3,9 @@ import { expect, test } from "../browserErrorFixture";
 import type { CDPSession, Page } from "@playwright/test";
 
 type MoveMetric = { latencyMs: number; changed: boolean };
-type PerfState = {
-  moves: MoveMetric[];
-  longTasks: number[];
-  revealTransitions: number[];
+type PerfWindow = typeof window & {
+  __nlLongTasks?: number[];
+  __nlRevealTransitions?: number[];
 };
 
 const performanceDirectory = "performance-results";
@@ -32,71 +31,95 @@ async function openChallenge(page: Page) {
   await expect(page.getByRole("slider")).toBeVisible();
 }
 
-async function installPerformanceObservers(page: Page) {
+async function installLongTaskObserver(page: Page) {
   await page.evaluate(() => {
-    const targetWindow = window as typeof window & { __nlPerf?: PerfState };
-    targetWindow.__nlPerf = { moves: [], longTasks: [], revealTransitions: [] };
-
+    const targetWindow = window as PerfWindow;
+    targetWindow.__nlLongTasks = [];
     try {
       const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) targetWindow.__nlPerf!.longTasks.push(entry.duration);
+        for (const entry of list.getEntries()) targetWindow.__nlLongTasks!.push(entry.duration);
       });
       observer.observe({ type: "longtask", buffered: false });
     } catch {
       // Long Task API is Chromium-only in this qualification lane.
     }
-
-    const track = document.querySelector<HTMLElement>(".nl-track-explore");
-    if (!track) throw new Error("Explore track is missing.");
-    track.addEventListener("pointermove", (event) => {
-      const marker = track.querySelector<HTMLElement>(".nl-marker");
-      if (!marker) return;
-      const before = marker.style.getPropertyValue("--nl-pos");
-      const eventTimestamp = event.timeStamp;
-      let frames = 0;
-      const sample = () => {
-        requestAnimationFrame(() => {
-          frames += 1;
-          const after = marker.style.getPropertyValue("--nl-pos");
-          if (after !== before || frames >= 2) {
-            targetWindow.__nlPerf!.moves.push({
-              latencyMs: Math.max(0, performance.now() - eventTimestamp),
-              changed: after !== before,
-            });
-          } else {
-            sample();
-          }
-        });
-      };
-      sample();
-    });
   });
 }
 
-async function dragSamples(page: Page, count = 220) {
+async function measurePointerMoves(page: Page, count = 220): Promise<MoveMetric[]> {
   const track = page.locator(".nl-track-explore");
   const box = await track.boundingBox();
   if (!box) throw new Error("Explore track has no bounding box.");
   const y = box.y + box.height / 2;
   const left = box.x + 18;
   const right = box.x + box.width - 18;
+
   await page.mouse.move(left, y);
   await page.mouse.down();
-  await page.mouse.move(right, y, { steps: Math.ceil(count / 2) });
-  await page.mouse.move(left, y, { steps: Math.floor(count / 2) });
-  await page.mouse.up();
-  await page.waitForFunction((minimum) => {
-    const state = (window as typeof window & { __nlPerf?: PerfState }).__nlPerf;
-    return (state?.moves.length ?? 0) >= minimum;
-  }, Math.floor(count * 0.6), { timeout: 10_000 });
-}
+  try {
+    return await page.evaluate(
+      async ({ sampleCount, clientLeft, clientRight, clientY }) => {
+        const trackElement = document.querySelector<HTMLElement>(".nl-track-explore");
+        const marker = trackElement?.querySelector<HTMLElement>(".nl-marker");
+        if (!trackElement || !marker) throw new Error("Explore performance targets are missing.");
 
-async function readState(page: Page): Promise<PerfState> {
-  return page.evaluate(() => {
-    const state = (window as typeof window & { __nlPerf?: PerfState }).__nlPerf;
-    if (!state) throw new Error("Performance state is missing.");
-    return state;
-  });
+        return new Promise<MoveMetric[]>((resolve) => {
+          const samples: MoveMetric[] = [];
+          let sent = 0;
+          let completed = 0;
+          const timer = window.setInterval(() => {
+            if (sent >= sampleCount) {
+              window.clearInterval(timer);
+              return;
+            }
+
+            const index = sent;
+            const half = Math.max(1, Math.floor(sampleCount / 2));
+            const fraction = index < half
+              ? index / Math.max(1, half - 1)
+              : 1 - (index - half) / Math.max(1, sampleCount - half - 1);
+            const clientX = clientLeft + fraction * (clientRight - clientLeft);
+            const before = marker.style.getPropertyValue("--nl-pos");
+            const event = new PointerEvent("pointermove", {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              pointerType: "mouse",
+              isPrimary: true,
+              buttons: 1,
+              clientX,
+              clientY,
+            });
+            const eventTimestamp = event.timeStamp;
+            trackElement.dispatchEvent(event);
+            sent += 1;
+
+            let frames = 0;
+            const captureResultingFrame = () => {
+              requestAnimationFrame(() => {
+                frames += 1;
+                const after = marker.style.getPropertyValue("--nl-pos");
+                if (after === before && frames < 2) {
+                  captureResultingFrame();
+                  return;
+                }
+                samples.push({
+                  latencyMs: Math.max(0, performance.now() - eventTimestamp),
+                  changed: after !== before,
+                });
+                completed += 1;
+                if (completed === sampleCount) resolve(samples);
+              });
+            };
+            captureResultingFrame();
+          }, 4);
+        });
+      },
+      { sampleCount: count, clientLeft: left, clientRight: right, clientY: y },
+    );
+  } finally {
+    await page.mouse.up();
+  }
 }
 
 test.describe("GAME-219 rendering and performance qualification", () => {
@@ -147,29 +170,22 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     test.skip(browserName !== "chromium", "CDP CPU throttling is Chromium-specific.");
 
     await openExplore(page);
-    await installPerformanceObservers(page);
-    await dragSamples(page);
-
-    let state = await readState(page);
-    const typical = state.moves.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
-    expect(typical.length).toBeGreaterThanOrEqual(100);
+    const typicalSamples = await measurePointerMoves(page);
+    const typical = typicalSamples.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
+    expect(typical.length).toBeGreaterThanOrEqual(180);
     const typicalP95 = p95(typical);
     expect(typicalP95).toBeLessThanOrEqual(16);
 
     const cdp: CDPSession = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
-    await page.evaluate(() => {
-      const state = (window as typeof window & { __nlPerf?: PerfState }).__nlPerf;
-      if (state) state.moves = [];
-    });
+    let throttledSamples: MoveMetric[];
     try {
-      await dragSamples(page);
-      state = await readState(page);
+      throttledSamples = await measurePointerMoves(page);
     } finally {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     }
-    const throttled = state.moves.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
-    expect(throttled.length).toBeGreaterThanOrEqual(100);
+    const throttled = throttledSamples.filter((sample) => sample.changed).map((sample) => sample.latencyMs);
+    expect(throttled.length).toBeGreaterThanOrEqual(180);
     const throttledP95 = p95(throttled);
     expect(throttledP95).toBeLessThanOrEqual(50);
 
@@ -180,6 +196,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
         schemaVersion: 1,
         metric: "pointermove-to-next-frame presentation proxy",
         eventTimingMetric: false,
+        dispatchedMoves: 220,
         sampleCountTypical: typical.length,
         typicalP95Ms: typicalP95,
         sampleCountCpu6x: throttled.length,
@@ -192,20 +209,20 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     test.skip(browserName !== "chromium", "Long Task API qualification runs in Chromium.");
 
     await openExplore(page);
-    await installPerformanceObservers(page);
-    await dragSamples(page, 200);
+    await installLongTaskObserver(page);
+    await measurePointerMoves(page, 200);
     for (let index = 0; index < 8; index += 1) {
       await page.getByRole("button", { name: index % 2 === 0 ? "Zoom in" : "Zoom out" }).click();
     }
     await page.waitForTimeout(100);
-    const state = await readState(page);
-    const maxLongTask = state.longTasks.length === 0 ? 0 : Math.max(...state.longTasks);
+    const observed = await page.evaluate(() => (window as PerfWindow).__nlLongTasks ?? []);
+    const maxLongTask = observed.length === 0 ? 0 : Math.max(...observed);
     expect(maxLongTask).toBeLessThanOrEqual(50);
 
     mkdirSync(performanceDirectory, { recursive: true });
     writeFileSync(
       `${performanceDirectory}/long-tasks.json`,
-      JSON.stringify({ schemaVersion: 1, maxLongTaskMs: maxLongTask, observed: state.longTasks }, null, 2) + "\n",
+      JSON.stringify({ schemaVersion: 1, maxLongTaskMs: maxLongTask, observed }, null, 2) + "\n",
     );
   });
 
@@ -213,7 +230,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     test.skip(browserName !== "chromium", "Timing evidence is recorded once in Chromium.");
 
     await page.addInitScript(() => {
-      const targetWindow = window as typeof window & { __nlRevealTransitions?: number[] };
+      const targetWindow = window as PerfWindow;
       targetWindow.__nlRevealTransitions = [];
       const nativeSetTimeout = window.setTimeout.bind(window);
       const dwellDelays = new Set([900, 1100, 1400, 1700]);
@@ -230,13 +247,11 @@ test.describe("GAME-219 rendering and performance qualification", () => {
             requestAnimationFrame(() => {
               frames += 1;
               const track = document.querySelector(".nl-track:not(.nl-track-locked)");
-              const button = document.querySelector<HTMLButtonElement>("button");
               if ((track && document.querySelector('button:not([disabled])')) || frames >= 12) {
                 targetWindow.__nlRevealTransitions!.push(performance.now() - dwellCompletedAt);
               } else {
                 findAcceptingFrame();
               }
-              void button;
             });
           };
           findAcceptingFrame();
@@ -254,9 +269,7 @@ test.describe("GAME-219 rendering and performance qualification", () => {
     }
     await expect(page.getByRole("heading", { name: /You scored/ })).toBeVisible();
 
-    const transitions = await page.evaluate(() =>
-      (window as typeof window & { __nlRevealTransitions?: number[] }).__nlRevealTransitions ?? [],
-    );
+    const transitions = await page.evaluate(() => (window as PerfWindow).__nlRevealTransitions ?? []);
     expect(transitions.length).toBeGreaterThanOrEqual(9);
     const transitionP95 = p95(transitions);
     expect(transitionP95).toBeLessThanOrEqual(200);
