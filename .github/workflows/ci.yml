@@ -60,6 +60,7 @@ jobs:
       host_build: ${{ steps.host_build.outcome }}
       ip: ${{ steps.ip.outcome }}
       bundle: ${{ steps.bundle.outcome }}
+      bundle_budget: ${{ steps.bundle_budget.outcome }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -82,6 +83,8 @@ jobs:
         run: npm run check:ip
       - id: bundle
         run: npm run check:bundle
+      - id: bundle_budget
+        run: npm run check:bundle-budget
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -91,6 +94,7 @@ jobs:
             dist-host/
             coverage/coverage-summary.json
             coverage/lcov.info
+            performance-results/bundle-budget.json
             node_modules/playwright-core/browsers.json
           if-no-files-found: warn
           retention-days: 90
@@ -101,6 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
+      lighthouse: ${{ steps.lighthouse.outcome }}
       e2e: ${{ steps.e2e.outcome }}
       a11y: ${{ steps.a11y.outcome }}
       host: ${{ steps.host.outcome }}
@@ -119,7 +124,9 @@ jobs:
         with:
           name: game-verification-${{ github.sha }}
           path: .
-      - run: npx playwright install --with-deps chromium webkit
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - id: lighthouse
+        run: npm run perf:lighthouse
       - id: e2e
         run: npm run test:e2e:run
       - id: a11y
@@ -131,6 +138,7 @@ jobs:
         with:
           name: game-browser-results-${{ github.sha }}
           path: |
+            .lighthouseci/
             test-results/
             playwright-report/
             playwright-report-a11y/
@@ -155,6 +163,12 @@ jobs:
         with:
           name: game-verification-${{ github.sha }}
           path: .
+      - uses: actions/download-artifact@v4
+        if: always() && needs.browser.result != 'skipped'
+        continue-on-error: true
+        with:
+          name: game-browser-results-${{ github.sha }}
+          path: .
       - name: Write commit-bound CI evidence
         if: always()
         env:
@@ -171,9 +185,11 @@ jobs:
           GATE_HOST_BUILD: ${{ needs.verify.outputs.host_build }}
           GATE_IP: ${{ needs.verify.outputs.ip }}
           GATE_BUNDLE: ${{ needs.verify.outputs.bundle }}
+          GATE_BUNDLE_BUDGET: ${{ needs.verify.outputs.bundle_budget }}
           BROWSER_E2E: ${{ needs.browser.outputs.e2e }}
           BROWSER_A11Y: ${{ needs.browser.outputs.a11y }}
           BROWSER_HOST: ${{ needs.browser.outputs.host }}
+          BROWSER_LHCI: ${{ needs.browser.outputs.lighthouse }}
         run: node scripts/write-ci-evidence.mjs
       - uses: actions/upload-artifact@v4
         if: always()

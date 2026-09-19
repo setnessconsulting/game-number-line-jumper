@@ -15,7 +15,7 @@ const browserManifest = existsSync(browserManifestPath)
   ? JSON.parse(readFileSync(browserManifestPath, "utf8"))
   : null;
 const requiredBrowsers = browserManifest?.browsers
-  ?.filter(({ name }) => name === "chromium" || name === "webkit")
+  ?.filter(({ name }) => name === "chromium" || name === "firefox" || name === "webkit")
   .map(({ name, revision, browserVersion, title }) => ({ name, revision, browserVersion, title })) ?? null;
 
 function status(name) {
@@ -62,12 +62,14 @@ const checks = {
   hostHarnessBuild: status("GATE_HOST_BUILD"),
   ipSeparation: status("GATE_IP"),
   learnerBundle: status("GATE_BUNDLE"),
+  learnerBundleBudget: status("GATE_BUNDLE_BUDGET"),
+  lighthouseLab: status("BROWSER_LHCI"),
   browserJourneys: status("BROWSER_E2E"),
   accessibility: status("BROWSER_A11Y"),
   hostLifecycle: status("BROWSER_HOST"),
 };
 const browserJobStatus = process.env.BROWSER_JOB_RESULT ?? "not-run";
-const browserSuitesStarted = Boolean(process.env.BROWSER_E2E || process.env.BROWSER_A11Y || process.env.BROWSER_HOST);
+const browserSuitesStarted = Boolean(process.env.BROWSER_LHCI || process.env.BROWSER_E2E || process.env.BROWSER_A11Y || process.env.BROWSER_HOST);
 const codeChanged = process.env.GAME_CODE_CHANGED === "true";
 const fullBrowserQualification = browserJobStatus === "success";
 const verificationPassed = process.env.VERIFY_JOB_RESULT === "success";
@@ -96,6 +98,8 @@ const manifest = {
   },
   packageLockSha256: createHash("sha256").update(packageLock).digest("hex"),
   productionBuild: treeDigest("dist"),
+  learnerBundleBudgetReport: treeDigest("performance-results"),
+  lighthouseLabReports: treeDigest(".lighthouseci"),
   coverage: coverage
     ? {
         linesPercent: coverage.lines?.pct ?? null,
@@ -117,19 +121,23 @@ const manifest = {
         : browserJobStatus === "skipped" && !codeChanged
           ? "skipped-docs-only"
           : "incomplete",
-    projects: ["chromium", "mobile-webkit"],
+    projects: ["chromium", "firefox", "mobile-webkit"],
     manualWorkflowDispatchRunsFullMatrix: true,
+  },
+  fieldINP: {
+    status: "unknown-pending",
+    reason: "The candidate is not promoted to a public playable route; CrUX data requires eligible real-user field samples.",
   },
   verificationStage: !verificationPassed
     ? "failed-or-incomplete"
     : fullBrowserQualification
-      ? "full-browser-and-accessibility"
+      ? "full-browser-accessibility-and-lab-performance"
       : browserJobStatus === "failure"
         ? "static-and-unit-passed-browser-failed"
         : browserJobStatus === "cancelled"
           ? "browser-qualification-cancelled"
           : "static-and-unit-only",
-  note: "This artifact records this CI run only; it is not final release acceptance and does not imply GAME-219, owner, host-deployment, or publication gates are complete.",
+  note: "This artifact records this CI run only; it is not final release acceptance and does not imply owner-observed device, public CrUX field-INP, host-deployment, or publication gates are complete.",
 };
 
 const outputDirectory = join(repositoryRoot, "ci-evidence");

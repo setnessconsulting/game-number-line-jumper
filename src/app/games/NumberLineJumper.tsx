@@ -90,8 +90,27 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function posStyle(norm: number): CSSProperties {
-  return { ["--nl-pos" as string]: String(norm) } as CSSProperties;
+function markerPositionStyle(norm: number): CSSProperties {
+  return { transform: `translateX(${norm * 100}%) translateY(-50%)` };
+}
+
+function horizontalPositionStyle(norm: number): CSSProperties {
+  return { left: `${norm * 100}%` };
+}
+
+function targetPositionStyle(norm: number): CSSProperties {
+  return { transform: `translateX(${norm * 100}%)` };
+}
+
+function edgeAlignmentClass(norm: number, prefix: "nl-marker" | "nl-truth"): string {
+  if (norm <= 0.12) return `${prefix}-edge-start`;
+  if (norm >= 0.88) return `${prefix}-edge-end`;
+  return "";
+}
+
+function exploreZoomLabel(level: number, range: Range): string {
+  const ticks = exploreZoomTicks(range);
+  return `Zoom level ${level + 1} of ${EXPLORE_ZOOM_LEVELS}, showing ${formatRangeValue(range.min)} to ${formatRangeValue(range.max)} with major ticks every ${formatValue(ticks.major)}`;
 }
 
 function midpointLabel(range: Range): string {
@@ -216,6 +235,12 @@ export default function NumberLineJumper({
   const visitBestsRef = useRef<VisitBests | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<HTMLDivElement>(null);
+  const trackRectRef = useRef<{ left: number; width: number } | null>(null);
+  const pendingPointerNormRef = useRef<number | null>(null);
+  const pointerFrameRef = useRef<number | null>(null);
+  const exploreReadoutValueRef = useRef<HTMLElement>(null);
+  const exploreReadoutPercentRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -486,6 +511,10 @@ export default function NumberLineJumper({
 
   useEffect(() => () => clearAdvanceTimer(), [clearAdvanceTimer]);
 
+  useEffect(() => () => {
+    if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
+  }, []);
+
   useEffect(() => () => closeSoundContext(audioContextRef), []);
 
   useEffect(() => {
@@ -507,12 +536,12 @@ export default function NumberLineJumper({
     }
   }, [phase, target?.display, committed]);
 
-  function activeRange(): Range {
+  function activeRange(norm?: number): Range {
     if (phase === "explore") {
       // GAME-5: the zoom window is the single source of truth for Explore.
       // Recomputed from (exploreZoom, exploreNorm), so zoom, pan, marker,
       // and readout never drift from each other.
-      return exploreZoomWindow(exploreZoom, exploreNorm);
+      return exploreZoomWindow(exploreZoom, norm ?? exploreNorm);
     }
     return target?.range ?? { min: 0, max: 1 };
   }
@@ -524,15 +553,71 @@ export default function NumberLineJumper({
   }
 
   function setActiveNorm(next: number) {
+    pendingPointerNormRef.current = null;
     if (phase === "intro") setWarmupNorm(next);
     else if (phase === "explore") setExploreNorm(next);
     else setMarkerNorm(next);
   }
 
+  function applyPointerNorm(next: number) {
+    if (markerRef.current) {
+      markerRef.current.style.transform = markerPositionStyle(next).transform ?? "";
+      markerRef.current.classList.remove("nl-marker-edge-start", "nl-marker-edge-end");
+      const edgeClass = edgeAlignmentClass(next, "nl-marker");
+      if (edgeClass) markerRef.current.classList.add(edgeClass);
+    }
+    const range = activeRange(next);
+    if (trackRef.current) {
+      const valueText = ariaValueText(next, range);
+      trackRef.current.setAttribute("aria-valuenow", String(Math.round(next * 100)));
+      trackRef.current.setAttribute(
+        "aria-valuetext",
+        phase === "explore" ? `${valueText}. ${exploreZoomLabel(exploreZoom, range)}` : valueText,
+      );
+    }
+    if (phase === "explore") {
+      if (exploreReadoutValueRef.current) {
+        exploreReadoutValueRef.current.textContent = formatValue(valueAtPosition(next, range));
+      }
+      if (exploreReadoutPercentRef.current) {
+        exploreReadoutPercentRef.current.textContent = `${Math.round(next * 100)}%`;
+      }
+    }
+  }
+
+  function queuePointerNorm(next: number) {
+    pendingPointerNormRef.current = next;
+    if (pointerFrameRef.current !== null) return;
+    pointerFrameRef.current = window.requestAnimationFrame(() => {
+      pointerFrameRef.current = null;
+      const pending = pendingPointerNormRef.current;
+      pendingPointerNormRef.current = null;
+      if (pending !== null) applyPointerNorm(pending);
+    });
+  }
+
+  function flushPointerNorm() {
+    const pending = pendingPointerNormRef.current;
+    if (pointerFrameRef.current !== null) {
+      window.cancelAnimationFrame(pointerFrameRef.current);
+      pointerFrameRef.current = null;
+    }
+    pendingPointerNormRef.current = null;
+    if (pending !== null) {
+      applyPointerNorm(pending);
+      setActiveNorm(pending);
+    }
+  }
+
   function normFromClientX(clientX: number): number {
     const el = trackRef.current;
     if (!el) return 0.5;
-    const rect = el.getBoundingClientRect();
+    let rect = trackRectRef.current;
+    if (!rect) {
+      const measured = el.getBoundingClientRect();
+      rect = { left: measured.left, width: measured.width };
+      trackRectRef.current = rect;
+    }
     if (rect.width <= 0) return 0.5;
     const inset = 12;
     const usable = Math.max(1, rect.width - inset * 2);
@@ -558,6 +643,8 @@ export default function NumberLineJumper({
     }
     event.currentTarget.setPointerCapture(event.pointerId);
     draggingRef.current = true;
+    trackRectRef.current = null;
+    flushPointerNorm();
     setActiveNorm(normFromClientX(event.clientX));
   }
 
@@ -577,13 +664,15 @@ export default function NumberLineJumper({
     if (!draggingRef.current || (phase !== "playing" && phase !== "intro" && phase !== "explore")) return;
     if (phase === "playing" && committed) return;
     if (phase === "intro" && warmupRevealed) return;
-    setActiveNorm(normFromClientX(event.clientX));
+    queuePointerNorm(normFromClientX(event.clientX));
   }
 
   function onPointerUp(event: PointerEvent<HTMLDivElement>) {
     if (phase === "explore" && explorePointersRef.current.has(event.pointerId)) {
       explorePointersRef.current.delete(event.pointerId);
       if (explorePointersRef.current.size < 2) pinchRef.current = null;
+      trackRectRef.current = null;
+      flushPointerNorm();
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
       } catch {
@@ -594,6 +683,8 @@ export default function NumberLineJumper({
     }
     if (!draggingRef.current) return;
     draggingRef.current = false;
+    trackRectRef.current = null;
+    flushPointerNorm();
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
@@ -810,11 +901,13 @@ export default function NumberLineJumper({
             <div className="nl-mid-tick" aria-hidden="true" />
             <div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" />
             <div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" />
-            <div className={`nl-marker nl-marker-warmup ${warmupRevealed ? "nl-marker-reveal" : ""}`} style={posStyle(warmupNorm)} aria-hidden="true">
-              <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
-              <span className="nl-marker-label">Your practice estimate</span>
+            <div ref={markerRef} className={`nl-marker nl-marker-warmup ${warmupRevealed ? "nl-marker-reveal" : ""} ${edgeAlignmentClass(warmupNorm, "nl-marker")}`} style={markerPositionStyle(warmupNorm)} aria-hidden="true">
+              <div className="nl-marker-anchor">
+                <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
+                <span className="nl-marker-label">Your practice estimate</span>
+              </div>
             </div>
-            {warmupRevealed ? <div className="nl-truth nl-truth-reveal" style={posStyle(trueNorm)} aria-hidden="true"><span className="nl-truth-flag">{target.display}</span></div> : null}
+            {warmupRevealed ? <div className={`nl-truth-positioner nl-truth-reveal ${edgeAlignmentClass(trueNorm, "nl-truth")}`} style={targetPositionStyle(trueNorm)} aria-hidden="true"><div className="nl-truth"><span className="nl-truth-flag">{target.display}</span></div></div> : null}
           </div>
           <p id={warmupValueId} className="sr-only" aria-live="polite">{announce}</p>
         </div>
@@ -837,7 +930,7 @@ export default function NumberLineJumper({
     const reduceMotion = prefersReducedMotion();
     const midLabel = midpointLabel(range);
     const readoutValue = formatValue(valueAtPosition(exploreNorm, range));
-    const zoomLabel = `Zoom level ${exploreZoom + 1} of ${EXPLORE_ZOOM_LEVELS}, showing ${formatRangeValue(range.min)} to ${formatRangeValue(range.max)} with major ticks every ${formatValue(ticks.major)}`;
+    const zoomLabel = exploreZoomLabel(exploreZoom, range);
     return (
       <div className="demo-panel">
         <div className="demo-status">
@@ -946,7 +1039,10 @@ export default function NumberLineJumper({
             <span>{formatRangeValue(range.max)}</span>
           </div>
           <div className="nl-tick-row" aria-hidden="true">
-            {ticks.majorTicks.map((tick) => <span key={tick} className="nl-tick-label">{formatValue(tick)}</span>)}
+            {ticks.majorTicks.map((tick) => {
+              const norm = (tick - range.min) / (range.max - range.min);
+              return <span key={tick} className="nl-tick-label" style={horizontalPositionStyle(norm)}>{formatValue(tick)}</span>;
+            })}
           </div>
           <div
             ref={trackRef}
@@ -977,17 +1073,21 @@ export default function NumberLineJumper({
             <div className="nl-rail" aria-hidden="true" />
             <div className="nl-mid-tick" aria-hidden="true" />
             {exploreShowHint ? <><div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" /><div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" /></> : null}
-            {ticks.majorTicks.map((tick) => {
-              const norm = (tick - range.min) / (range.max - range.min);
-              return <div key={tick} className="nl-zoom-tick" style={posStyle(norm)} aria-hidden="true" />;
-            })}
-            <div className="nl-marker nl-marker-warmup" style={posStyle(exploreNorm)} aria-hidden="true">
-              <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
-              <span className="nl-marker-label">Jumper</span>
+            <div className="nl-zoom-ticks" aria-hidden="true">
+              {ticks.majorTicks.map((tick) => {
+                const norm = (tick - range.min) / (range.max - range.min);
+                return <div key={tick} className="nl-zoom-tick" style={horizontalPositionStyle(norm)} />;
+              })}
+            </div>
+            <div ref={markerRef} className={`nl-marker nl-marker-warmup ${edgeAlignmentClass(exploreNorm, "nl-marker")}`} style={markerPositionStyle(exploreNorm)} aria-hidden="true">
+              <div className="nl-marker-anchor">
+                <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
+                <span className="nl-marker-label">Jumper</span>
+              </div>
             </div>
           </div>
           <p id={exploreValueId} className="sr-only" aria-live="polite">{announce}</p>
-          <p className="nl-explore-readout">Jumper at <strong>{readoutValue}</strong> · {Math.round(exploreNorm * 100)}% across the visible line</p>
+          <p className="nl-explore-readout">Jumper at <strong ref={exploreReadoutValueRef}>{readoutValue}</strong> · <span ref={exploreReadoutPercentRef}>{Math.round(exploreNorm * 100)}%</span> across the visible line</p>
         </div>
 
         <div className="demo-controls nl-action-row">
@@ -1098,11 +1198,13 @@ export default function NumberLineJumper({
           <div className="nl-rail" aria-hidden="true" />
           <div className="nl-mid-tick" aria-hidden="true" />
           {showHint ? <><div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" /><div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" /></> : null}
-          <div className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""}`} style={posStyle(markerNorm)} aria-hidden="true">
-            <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
-            {committed ? <span className="nl-marker-label">Your estimate</span> : null}
+          <div ref={markerRef} className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""} ${edgeAlignmentClass(markerNorm, "nl-marker")}`} style={markerPositionStyle(markerNorm)} aria-hidden="true">
+            <div className="nl-marker-anchor">
+              <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
+              {committed ? <span className="nl-marker-label">Your estimate</span> : null}
+            </div>
           </div>
-          {committed && target ? <div className="nl-truth nl-truth-reveal" style={posStyle(trueNorm)} aria-hidden="true"><span className="nl-truth-flag">{target.display}</span></div> : null}
+          {committed && target ? <div className={`nl-truth-positioner nl-truth-reveal ${edgeAlignmentClass(trueNorm, "nl-truth")}`} style={targetPositionStyle(trueNorm)} aria-hidden="true"><div className="nl-truth"><span className="nl-truth-flag">{target.display}</span></div></div> : null}
         </div>
         <p id={valueId} className="sr-only" aria-live="polite">{announce}</p>
       </div>

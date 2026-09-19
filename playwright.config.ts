@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 const port = process.env.GAME_NLJ_E2E_PORT ?? "4173";
 const externalBaseUrl = process.env.GAME_NLJ_E2E_BASE_URL;
 const baseURL = externalBaseUrl ?? `http://127.0.0.1:${port}`;
+const performanceTest = /numberLineJumperPerformance\.spec\.ts/;
+const hostHarnessTest = "**/numberLineJumperHost.spec.ts";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -26,9 +28,27 @@ export default defineConfig({
         url: `${baseURL}/`,
         reuseExistingServer: false,
         timeout: 120_000,
-      },
+  },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } } },
-    { name: "mobile-webkit", use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, browserName: "webkit" } },
+    {
+      name: "chromium-performance",
+      testMatch: performanceTest,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: "chromium",
+      testIgnore: [performanceTest, hostHarnessTest],
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: "firefox",
+      testIgnore: [performanceTest, hostHarnessTest],
+      use: { ...devices["Desktop Firefox"], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: "mobile-webkit",
+      testIgnore: [performanceTest, hostHarnessTest],
+      use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, browserName: "webkit" },
+    },
   ],
 });
