@@ -20,6 +20,65 @@ test.describe("Number Line Jumper browser flow", () => {
     }
   });
 
+  test("anchors Explore tick labels to their ticks and moves the marker with transform", async ({ page }) => {
+    await openJumper(page);
+    await page.getByRole("button", { name: "Explore an untimed line" }).click();
+
+    const alignment = await page.locator(".nl-tick-row").evaluate((row) => {
+      const labels = [...row.querySelectorAll<HTMLElement>(".nl-tick-label")];
+      const track = row.parentElement?.querySelector(".nl-track-explore");
+      const ticks = track ? [...track.querySelectorAll<HTMLElement>(".nl-zoom-tick")] : [];
+      return {
+        labels: labels.map((label) => {
+          const rect = label.getBoundingClientRect();
+          return { center: rect.left + rect.width / 2, text: label.textContent };
+        }),
+        ticks: ticks.map((tick) => {
+          const rect = tick.getBoundingClientRect();
+          return { center: rect.left + rect.width / 2 };
+        }),
+      };
+    });
+
+    expect(alignment.labels.length).toBeGreaterThan(1);
+    expect(alignment.labels).toHaveLength(alignment.ticks.length);
+    alignment.labels.forEach((label, index) => {
+      expect(Math.abs(label.center - alignment.ticks[index]!.center), `tick label ${label.text}`).toBeLessThanOrEqual(2);
+    });
+
+    const marker = page.locator(".nl-track-explore .nl-marker");
+    const motion = await marker.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { left: style.left, transform: style.transform, transitionProperty: style.transitionProperty };
+    });
+    expect(motion.left).toBe("12px");
+    expect(motion.transform).not.toBe("none");
+    expect(motion.transitionProperty.split(",")).toContain("transform");
+    expect(motion.transitionProperty).not.toContain("left");
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const reducedMotion = await marker.evaluate((element) => getComputedStyle(element).transitionProperty);
+    expect(reducedMotion).not.toContain("transform");
+
+    const slider = page.getByRole("slider", { name: /Explore number line/ });
+    const markerDistanceFromRailEnd = () => marker.evaluate((element) => {
+      const track = element.parentElement;
+      const token = element.querySelector<HTMLElement>(".nl-jumper-token");
+      const rail = track?.querySelector<HTMLElement>(".nl-rail");
+      if (!track || !token || !rail) return Number.POSITIVE_INFINITY;
+      const tokenRect = token.getBoundingClientRect();
+      const railRect = rail.getBoundingClientRect();
+      const markerCenter = tokenRect.left + tokenRect.width / 2;
+      const expectedCenter = track.getAttribute("aria-valuenow") === "0" ? railRect.left : railRect.right;
+      return Math.abs(markerCenter - expectedCenter);
+    });
+
+    await slider.press("Home");
+    await expect.poll(markerDistanceFromRailEnd).toBeLessThanOrEqual(2);
+    await slider.press("End");
+    await expect.poll(markerDistanceFromRailEnd).toBeLessThanOrEqual(2);
+  });
+
   test("supports keyboard placement, midpoint scaffolding, feedback, and clean exit", async ({ page }) => {
     await openJumper(page);
     await page.getByRole("button", { name: /Grades 3/ }).click();
@@ -136,6 +195,11 @@ test.describe("Number Line Jumper browser flow", () => {
   });
 
   test("surfaces session-only visit bests with record callouts and reload reset", async ({ page }) => {
+    // Keep the comparison between the two intentionally different placement
+    // strategies deterministic; runtime gameplay remains time-seeded.
+    await page.addInitScript(() => {
+      Object.defineProperty(Date, "now", { configurable: true, value: () => 291 });
+    });
     // Round 1 parks every estimate at the far-left endpoint; round 2 lands
     // every estimate on the midpoint (the slider's resting position), which
     // is systematically closer for this band's target distribution and so
