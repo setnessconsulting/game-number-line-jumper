@@ -158,6 +158,42 @@ test.describe("Number Line Jumper browser flow", () => {
     await expect(page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" })).not.toBeChecked();
   });
 
+  test("emits continuous reveal intensity and motion styles from placement error", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+    await openJumper(page);
+    await page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" }).check();
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+
+    const slider = page.getByRole("slider");
+    const samples: Array<{ intensity: string; scale: string; glow: string; truthIntensity: string }> = [];
+    for (const placement of ["Home", "ArrowRight", "End", "ArrowLeft"] as const) {
+      await slider.press(placement);
+      await page.getByRole("button", { name: "Land here" }).click();
+      const sample = await page.locator(".nl-marker-reveal").evaluate((marker) => {
+        const token = marker.querySelector<HTMLElement>(".nl-jumper-token");
+        if (!token) throw new Error("Reveal token was not rendered");
+        const truth = document.querySelector<HTMLElement>(".nl-truth-reveal");
+        if (!truth) throw new Error("Reveal target was not rendered");
+        return {
+          intensity: marker.style.getPropertyValue("--nl-reveal-intensity"),
+          scale: marker.style.getPropertyValue("--nl-reveal-scale"),
+          glow: marker.style.getPropertyValue("--nl-reveal-glow"),
+          truthIntensity: truth.style.getPropertyValue("--nl-reveal-intensity"),
+        };
+      });
+      samples.push(sample);
+
+      if (new Set(samples.map(({ intensity }) => intensity)).size > 1) break;
+      await page.getByRole("button", { name: "Continue" }).click();
+    }
+
+    expect(new Set(samples.map(({ intensity }) => intensity)).size).toBeGreaterThan(1);
+    expect(new Set(samples.map(({ scale }) => scale)).size).toBeGreaterThan(1);
+    expect(new Set(samples.map(({ glow }) => glow)).size).toBeGreaterThan(1);
+    expect(samples.every(({ intensity, truthIntensity }) => intensity === truthIntensity)).toBe(true);
+  });
+
   test("keeps the number line inside a mobile viewport", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile-webkit", "The touch-target assertion belongs to the mobile project.");
     await openJumper(page);

@@ -133,12 +133,19 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-marker-label { position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%); padding: 2px 6px; border-radius: 6px; background: white; color: var(--primary-dark); font-size: 10px; font-weight: 800; line-height: 1.2; white-space: nowrap; box-shadow: 0 2px 8px rgba(31,48,83,.12); }
 .nl-marker-edge-start .nl-marker-label { transform: none; }
 .nl-marker-edge-end .nl-marker-label { left: auto; right: 50%; transform: none; }
-.nl-marker-reveal .nl-jumper-token { animation: nl-pop 0.35s ease; }
-.nl-marker-exact .nl-jumper-token { background: var(--good); box-shadow: 0 4px 14px rgba(22, 122, 90, 0.4); transform: scale(1.18); }
-.nl-marker-close .nl-jumper-token { background: var(--warm); box-shadow: 0 4px 12px rgba(255, 178, 74, 0.45); transform: scale(1.08); }
-.nl-marker-far .nl-jumper-token { background: #6b789d; box-shadow: 0 4px 12px rgba(72, 86, 125, 0.28); }
+.nl-marker-reveal .nl-jumper-token {
+  animation: nl-pop var(--nl-reveal-duration, 350ms) var(--nl-reveal-easing, ease);
+  transform: scale(var(--nl-reveal-scale, 1));
+}
+.nl-marker-exact .nl-jumper-token { background: var(--good); box-shadow: 0 4px var(--nl-reveal-glow, 14px) rgba(22, 122, 90, 0.4); }
+.nl-marker-close .nl-jumper-token { background: var(--warm); box-shadow: 0 4px var(--nl-reveal-glow, 12px) rgba(255, 178, 74, 0.45); }
+.nl-marker-far .nl-jumper-token { background: #6b789d; box-shadow: 0 4px var(--nl-reveal-glow, 12px) rgba(72, 86, 125, 0.28); }
+.nl-marker-reveal.nl-marker-far .nl-jumper-token {
+  animation-name: nl-far-settle;
+  animation-duration: var(--nl-reveal-settle-duration, 420ms);
+}
 .nl-truth-positioner { position: absolute; top: 8px; bottom: 8px; left: 12px; right: 12px; z-index: 1; pointer-events: none; }
-.nl-truth-positioner.nl-truth-reveal .nl-truth { animation: nl-truth-in 0.3s ease; }
+.nl-truth-positioner.nl-truth-reveal .nl-truth { animation: nl-truth-in var(--nl-reveal-duration, 300ms) var(--nl-reveal-easing, ease); }
 .nl-truth { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--ink); transform: translateX(-50%); }
 .nl-truth-flag { position: absolute; top: -26px; left: 50%; transform: translateX(-50%); padding: 3px 8px; border-radius: 8px; background: var(--ink); color: white; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .nl-truth-edge-start .nl-truth-flag { transform: none; }
@@ -175,11 +182,14 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-visit-record strong { display: block; color: var(--primary-dark); }
 
 @keyframes nl-pop { 0% { transform: scale(0.85); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+@keyframes nl-far-settle { 0% { transform: translateY(-2px) scale(.98); } 70% { transform: translateY(0) scale(var(--nl-reveal-settle-scale, 1.02)); } 100% { transform: translateY(0) scale(1); } }
 @keyframes nl-truth-in { from { opacity: 0; transform: translateX(-50%) scaleY(0.6); } to { opacity: 1; transform: translateX(-50%) scaleY(1); } }
 
 @media (prefers-reduced-motion: reduce) {
   .nl-marker, .nl-marker-dot, .nl-jumper-token, .nl-track, .nl-zoom-tick { transition: none; }
   .nl-marker-reveal .nl-jumper-token, .nl-truth-positioner.nl-truth-reveal .nl-truth { animation: none; }
+  .nl-marker-reveal.nl-marker-far .nl-jumper-token { animation: none; }
+  .nl-marker-reveal .nl-jumper-token { transform: none; }
 }
 
 @media (max-width: 620px) {

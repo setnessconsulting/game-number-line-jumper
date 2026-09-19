@@ -32,7 +32,7 @@ Explore is untimed and unscored. It supports pan, pinch, wheel, keyboard zoom, a
 - motion must preserve meaning under reduced motion;
 - the optional “Wait for me after feedback (this session)” setting keeps scored feedback visible until the learner activates a native Continue control;
 - timed reveals retain the existing accuracy-based 900/1100/1400/1700 ms dwell, while Continue moves focus to the next target heading;
-- GAME-230 owns continuous accuracy-correlated reveal motion and must provide a reduced-motion equivalent.
+- GAME-230 owns continuous accuracy-correlated reveal motion and must provide a reduced-motion equivalent; the exact contract is in [`MOTION.md`](MOTION.md).
 
 ## Summary
 
@@ -52,7 +52,7 @@ Phone portrait is primary. At 360 px there must be no horizontal page overflow a
 
 ## Motion and design authority
 
-A production Figma file is **not yet recorded** in GAME-221. Therefore these repository documents define current functional UX intent, but they do not claim a passed Figma/design-alignment gate. When GAME-221 records a real fileKey, deliberate implementation deviations must be documented rather than silently normalized.
+The owner selected these checked-in repository documents as the design authority for GAME-230 on 2026-09-19 because no Number Line Jumper Figma file exists. [`MOTION.md`](MOTION.md) records the error-to-intensity mapping, scale/glow bounds, easing, duration, far-tier settle, reduced-motion behavior, and non-color marker/truth distinction. This decision does not claim a Figma/design-alignment gate passed.
 
 ## Public arcade entry/exit
 
