@@ -13,6 +13,9 @@ module.exports = {
         formFactor: "mobile",
         onlyCategories: ["performance"],
         throttlingMethod: "simulate",
+        // The Playwright Chrome binary runs without a usable setuid sandbox on
+        // the hosted CI runner; this job is already isolated by GitHub Actions.
+        chromeFlags: "--no-sandbox --disable-setuid-sandbox",
       },
     },
     assert: {
