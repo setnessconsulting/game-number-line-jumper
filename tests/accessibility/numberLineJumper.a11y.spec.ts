@@ -238,13 +238,16 @@ test.describe("Number Line Jumper production accessibility", () => {
 
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Enter");
+    // Assert the visual reveal immediately after the commit event. The game
+    // intentionally advances after its reveal dwell, so waiting for the
+    // feedback focus first can race the next-trial transition on mobile WebKit.
+    await expect(page.locator(".nl-marker-label")).toHaveText("Your estimate");
+    await expect(page.locator(".nl-truth-flag")).toBeVisible();
     const feedback = page.getByRole("status");
     await expect(feedback).toBeFocused();
     await expect(feedback).toContainText("Your estimate");
     await expect(feedback).toContainText("Target");
     await expect(feedback).toContainText("Try this next time");
-    await expect(page.locator(".nl-marker-label")).toHaveText("Your estimate");
-    await expect(page.locator(".nl-truth-flag")).toBeVisible();
     const nonColorMarkers = await page.evaluate(() => ({
       jumperShape: getComputedStyle(document.querySelector(".nl-jumper-token")!).borderRadius,
       truthShape: getComputedStyle(document.querySelector(".nl-truth-flag")!).borderRadius,

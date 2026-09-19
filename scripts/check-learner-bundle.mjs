@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-const lockfile = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
 const buildRoot = join(repositoryRoot, "dist");
+// Development tools can have their own telemetry dependencies; only runtime dependencies and
+// built assets define what the learner downloads.
 const allowedRuntimeDependencies = new Set(["react", "react-dom"]);
-const blockedPackage = /(?:^|\/)(?:phaser|pixi(?:\.js)?|unity[^/]*|[^/]*webgl[^/]*|@sentry\/[^/]+|sentry(?:-[^/]*)?|@opentelemetry\/[^/]+|posthog-js|@datadog\/browser-[^/]+|newrelic|bugsnag|rollbar|fullstory|mixpanel-browser|rudder-sdk-js|@highlight-run\/[^/]+)$/i;
 const blockedBundleMarker = /\b(?:phaser|pixi(?:\.js)?|unityloader|unityframework|createunityinstance|webglplayer|webgl|sentry|opentelemetry|posthog|datadog|newrelic|bugsnag|rollbar|fullstory|mixpanel|rudderstack|hotjar|clarity)\b/i;
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".mjs", ".svg"]);
 
@@ -31,12 +31,6 @@ const runtimeDependencies = Object.keys(packageJson.dependencies ?? {});
 const unapprovedDependencies = runtimeDependencies.filter((name) => !allowedRuntimeDependencies.has(name));
 if (unapprovedDependencies.length > 0) {
   violations.push(`unapproved direct runtime dependencies: ${unapprovedDependencies.join(", ")}`);
-}
-
-for (const packagePath of Object.keys(lockfile.packages ?? {})) {
-  if (!packagePath.startsWith("node_modules/")) continue;
-  const name = packagePath.slice("node_modules/".length).split("/node_modules/").at(-1);
-  if (name && blockedPackage.test(name)) violations.push(`blocked package is present in the lockfile: ${name}`);
 }
 
 const bundleFiles = filesUnder(buildRoot);
