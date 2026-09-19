@@ -213,6 +213,7 @@ export default function NumberLineJumper({
   const [targetIndex, setTargetIndex] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [waitForMe, setWaitForMe] = useState(false);
   const [announce, setAnnounce] = useState("");
   // Visit bests live in React memory for this page session only.
   // Null until a first completed run; a remount/reload starts a fresh visit.
@@ -383,6 +384,12 @@ export default function NumberLineJumper({
     setAnnounce("");
     setPhase("playing");
   }, [clearAdvanceTimer, endRound]);
+
+  const advanceReveal = useCallback((completedTrials: readonly TrialRecord[]) => {
+    clearAdvanceTimer();
+    if (completedTrials.length >= ROUND_MAX_TRIALS) endRound();
+    else nextTarget(completedTrials);
+  }, [clearAdvanceTimer, endRound, nextTarget]);
 
   function prepareRound(id: PlacementBand) {
     clearAdvanceTimer();
@@ -725,8 +732,6 @@ export default function NumberLineJumper({
       points: result.points,
     };
 
-    const delay = revealMs(result.closeness, prefersReducedMotion());
-    const nextTrialCount = trials.length + 1;
     // Compute the next trials array once, purely, so the ref mirror and the
     // state stay in sync even under double-invoked updaters.
     const nextTrials = [...trials, record];
@@ -734,10 +739,10 @@ export default function NumberLineJumper({
     sessionTrialsRef.current = [...sessionTrialsRef.current, record];
     setTrials(nextTrials);
     clearAdvanceTimer();
-    advanceTimerRef.current = window.setTimeout(() => {
-      if (nextTrialCount >= ROUND_MAX_TRIALS) endRound();
-      else nextTarget(nextTrials);
-    }, delay);
+    if (!waitForMe) {
+      const delay = revealMs(result.closeness, prefersReducedMotion());
+      advanceTimerRef.current = window.setTimeout(() => advanceReveal(nextTrials), delay);
+    }
   }
 
   function moveMarker(next: number) {
@@ -834,6 +839,10 @@ export default function NumberLineJumper({
         <label className="nl-sound-toggle">
           <input type="checkbox" checked={soundEnabled} onChange={(event) => setSoundEnabled(event.target.checked)} />
           <span>Quiet sound cues (optional)</span>
+        </label>
+        <label className="nl-sound-toggle">
+          <input type="checkbox" checked={waitForMe} onChange={(event) => setWaitForMe(event.target.checked)} />
+          <span>Wait for me after feedback (this session)</span>
         </label>
         <p className="microcopy nl-privacy-note">Session-only play — nothing about you is saved.</p>
       </div>
@@ -1216,6 +1225,11 @@ export default function NumberLineJumper({
           <div className="nl-feedback-grid"><span>Your estimate <strong>{formatValue(lastScore.playerValue)}</strong></span><span>Target <strong>{target?.display ?? formatValue(lastScore.targetValue)}</strong></span></div>
           <span>Off by {formatPct(lastScore.error)} · +{lastScore.points} points</span>
           <span className="nl-feedback-next"><strong>Try this next time:</strong> {lastScore.nextStep}</span>
+          {waitForMe ? (
+            <div className="demo-controls nl-action-row" style={{ marginTop: 4 }}>
+              <button type="button" className="button primary" onClick={() => advanceReveal(trialsRef.current)}>Continue</button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="demo-controls nl-action-row" style={{ marginTop: 18 }}>

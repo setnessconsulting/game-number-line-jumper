@@ -213,6 +213,46 @@ test.describe("Number Line Jumper production accessibility", () => {
     await checkTargetSizes(page, "Guided warm-up");
   });
 
+  test("keeps wait-for-me feedback accessible and reflow-safe through Continue", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openJumper(page);
+    const waitForMe = page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" });
+    await expect(waitForMe).not.toBeChecked();
+    await waitForMe.check();
+    await checkA11y(page, "wait-for-me setup");
+    await checkTargetSizes(page, "wait-for-me setup");
+
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error("The accessibility project must define a viewport.");
+    await page.setViewportSize({ width: Math.floor(viewport.width / 2), height: viewport.height });
+    await page.getByRole("button", { name: /Grades 1/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+    const slider = page.getByRole("slider");
+    await slider.focus();
+    await page.keyboard.press("Enter");
+
+    const feedback = page.getByRole("status");
+    const continueButton = page.getByRole("button", { name: "Continue" });
+    await expect(feedback).toBeFocused();
+    await expect(continueButton).toBeVisible();
+    await checkA11y(page, "wait-for-me reveal and feedback");
+    await checkTargetSizes(page, "wait-for-me reveal and feedback");
+    await checkReflow(page, "wait-for-me reveal and feedback");
+
+    const revealMotion = await page.evaluate(() => ({
+      reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      markerAnimation: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).animationName,
+      targetAnimation: getComputedStyle(document.querySelector(".nl-truth-reveal")!).animationName,
+    }));
+    expect(revealMotion).toEqual({ reduced: true, markerAnimation: "none", targetAnimation: "none" });
+
+    await continueButton.click();
+    await expect(page.getByRole("heading", { name: /Land on / })).toBeFocused();
+    await checkA11y(page, "wait-for-me after Continue");
+    await checkTargetSizes(page, "wait-for-me after Continue");
+    await checkReflow(page, "wait-for-me after Continue");
+  });
+
   test("covers Challenge, reveal, and a full keyboard-only round through summary", async ({ page }) => {
     await openJumper(page);
 

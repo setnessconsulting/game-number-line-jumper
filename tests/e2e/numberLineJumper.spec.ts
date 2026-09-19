@@ -107,6 +107,57 @@ test.describe("Number Line Jumper browser flow", () => {
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
   });
 
+  test("holds feedback for the learner and advances with Continue in every input mode", async ({ page }, testInfo) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+    await openJumper(page);
+
+    const waitForMe = page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" });
+    await expect(waitForMe).not.toBeChecked();
+    await waitForMe.check();
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+    await expect(page.getByText("Trial 1 of 10 · place the jumper, then press Land")).toBeVisible();
+
+    const slider = page.getByRole("slider");
+    await slider.press("Enter");
+    const feedback = page.getByRole("status");
+    const continueButton = page.getByRole("button", { name: "Continue" });
+    await expect(feedback).toBeFocused();
+    await expect(continueButton).toBeVisible();
+    await page.clock.fastForward(2_000);
+    await expect(continueButton).toBeVisible();
+    await expect(page.getByText("Trial 1 of 10 · place the jumper, then press Land")).toBeVisible();
+    await expect(slider).toHaveAttribute("aria-disabled", "true");
+
+    await continueButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Trial 2 of 10 · place the jumper, then press Land")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Land on / })).toBeFocused();
+
+    await slider.press("Enter");
+    await expect(continueButton).toBeVisible();
+    await continueButton.focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByText("Trial 3 of 10 · place the jumper, then press Land")).toBeVisible();
+
+    await page.getByRole("button", { name: "Land here" }).click();
+    await expect(continueButton).toBeVisible();
+    if (testInfo.project.name === "mobile-webkit") await continueButton.tap();
+    else await continueButton.click();
+    await expect(page.getByText("Trial 4 of 10 · place the jumper, then press Land")).toBeVisible();
+
+    await page.getByRole("button", { name: "Exit" }).click();
+    await expect(waitForMe).not.toBeChecked();
+    expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookies: document.cookie.length }))).toEqual({
+      local: 0,
+      session: 0,
+      cookies: 0,
+    });
+    await page.reload();
+    await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" })).not.toBeChecked();
+  });
+
   test("keeps the number line inside a mobile viewport", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile-webkit", "The touch-target assertion belongs to the mobile project.");
     await openJumper(page);

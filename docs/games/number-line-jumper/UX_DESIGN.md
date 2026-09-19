@@ -30,6 +30,8 @@ Explore is untimed and unscored. It supports pan, pinch, wheel, keyboard zoom, a
 - feedback identifies direction and distance before strategy hints;
 - midpoint/quarter anchors may support reasoning without turning the line into dense counting;
 - motion must preserve meaning under reduced motion;
+- the optional “Wait for me after feedback (this session)” setting keeps scored feedback visible until the learner activates a native Continue control;
+- timed reveals retain the existing accuracy-based 900/1100/1400/1700 ms dwell, while Continue moves focus to the next target heading;
 - GAME-230 owns continuous accuracy-correlated reveal motion and must provide a reduced-motion equivalent.
 
 ## Summary
