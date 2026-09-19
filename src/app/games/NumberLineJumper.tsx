@@ -34,6 +34,7 @@ import {
 } from "@/lib/numberLineJumper/engine";
 import type { AdaptiveTargetGeneratorState } from "@/lib/numberLineJumper/engine";
 import { generateExplorePrompt } from "@/lib/numberLineJumper/explorePrompt";
+import { REVEAL_MOTION_TOKENS, revealMotionFromError } from "@/lib/numberLineJumper/motion";
 import { sessionAggregates } from "@/lib/numberLineJumper/aggregates";
 import {
   createHostEventSinkV1,
@@ -100,6 +101,19 @@ function horizontalPositionStyle(norm: number): CSSProperties {
 
 function targetPositionStyle(norm: number): CSSProperties {
   return { transform: `translateX(${norm * 100}%)` };
+}
+
+function revealMotionStyle(score: PlacementScore): CSSProperties {
+  const motion = revealMotionFromError(score.error);
+  return {
+    "--nl-reveal-intensity": String(motion.intensity),
+    "--nl-reveal-scale": String(motion.scale),
+    "--nl-reveal-glow": `${motion.glowBlurPx}px`,
+    "--nl-reveal-duration": `${motion.durationMs}ms`,
+    "--nl-reveal-settle-duration": `${motion.farSettleDurationMs}ms`,
+    "--nl-reveal-settle-scale": String(motion.farSettleScale),
+    "--nl-reveal-easing": REVEAL_MOTION_TOKENS.easing,
+  } as CSSProperties;
 }
 
 function edgeAlignmentClass(norm: number, prefix: "nl-marker" | "nl-truth"): string {
@@ -1207,13 +1221,13 @@ export default function NumberLineJumper({
           <div className="nl-rail" aria-hidden="true" />
           <div className="nl-mid-tick" aria-hidden="true" />
           {showHint ? <><div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" /><div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" /></> : null}
-          <div ref={markerRef} className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""} ${edgeAlignmentClass(markerNorm, "nl-marker")}`} style={markerPositionStyle(markerNorm)} aria-hidden="true">
+          <div ref={markerRef} className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""} ${edgeAlignmentClass(markerNorm, "nl-marker")}`} style={{ ...markerPositionStyle(markerNorm), ...(committed && lastScore ? revealMotionStyle(lastScore) : {}) }} aria-hidden="true">
             <div className="nl-marker-anchor">
               <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
               {committed ? <span className="nl-marker-label">Your estimate</span> : null}
             </div>
           </div>
-          {committed && target ? <div className={`nl-truth-positioner nl-truth-reveal ${edgeAlignmentClass(trueNorm, "nl-truth")}`} style={targetPositionStyle(trueNorm)} aria-hidden="true"><div className="nl-truth"><span className="nl-truth-flag">{target.display}</span></div></div> : null}
+          {committed && target && lastScore ? <div className={`nl-truth-positioner nl-truth-reveal ${edgeAlignmentClass(trueNorm, "nl-truth")}`} style={{ ...targetPositionStyle(trueNorm), ...revealMotionStyle(lastScore) }} aria-hidden="true"><div className="nl-truth"><span className="nl-truth-flag">{target.display}</span></div></div> : null}
         </div>
         <p id={valueId} className="sr-only" aria-live="polite">{announce}</p>
       </div>

@@ -242,9 +242,10 @@ test.describe("Number Line Jumper production accessibility", () => {
     const revealMotion = await page.evaluate(() => ({
       reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
       markerAnimation: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).animationName,
+      markerTransform: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).transform,
       targetAnimation: getComputedStyle(document.querySelector(".nl-truth-reveal")!).animationName,
     }));
-    expect(revealMotion).toEqual({ reduced: true, markerAnimation: "none", targetAnimation: "none" });
+    expect(revealMotion).toEqual({ reduced: true, markerAnimation: "none", markerTransform: "none", targetAnimation: "none" });
 
     await continueButton.click();
     await expect(page.getByRole("heading", { name: /Land on / })).toBeFocused();
@@ -357,12 +358,14 @@ test.describe("Number Line Jumper production accessibility", () => {
     const revealMotion = await page.evaluate(() => ({
       reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
       markerAnimation: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).animationName,
+      markerTransform: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).transform,
       targetAnimation: getComputedStyle(document.querySelector(".nl-truth-reveal")!).animationName,
       trackTransition: getComputedStyle(document.querySelector(".nl-track")!).transitionDuration,
     }));
     expect(revealMotion).toMatchObject({
       reduced: true,
       markerAnimation: "none",
+      markerTransform: "none",
       targetAnimation: "none",
       trackTransition: "0s",
     });
