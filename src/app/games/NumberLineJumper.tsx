@@ -49,10 +49,19 @@ import type {
 import { closeSoundContext, playSoundCue, soundCueForError, type SoundCue } from "@/lib/numberLineJumper/sound";
 import {
   recordCallouts,
+  sessionBestsLine,
+  sessionRecordCallouts,
   updateVisitBests,
   visitBestsLine,
   type VisitBests,
 } from "@/lib/numberLineJumper/visitBests";
+import {
+  createSessionStoreAdapter,
+  getBrowserSessionStorage,
+  SESSION_RECORDS_ENABLED,
+  type SessionStoreState,
+  type StoredRound,
+} from "@/lib/numberLineJumper/sessionStore";
 import type {
   Closeness,
   NumberKind,
@@ -177,6 +186,17 @@ function newGameSeed(): number {
   return Date.now() % 1_000_000;
 }
 
+/** Keep the seeded generator reproducible across a browser-tab resume. */
+function trackedMulberry32(seed: number, callsRef: { current: number }, initialCalls = 0): () => number {
+  const rng = mulberry32(seed);
+  for (let index = 0; index < initialCalls; index += 1) rng();
+  callsRef.current = initialCalls;
+  return () => {
+    callsRef.current += 1;
+    return rng();
+  };
+}
+
 export default function NumberLineJumper({
   onExit,
   host,
@@ -185,6 +205,20 @@ export default function NumberLineJumper({
   host?: NumberLineJumperHostV1;
 }) {
   const [hostRuntime] = useState(() => resolveHostContractV1(host));
+  const sessionStoreRef = useRef<ReturnType<typeof createSessionStoreAdapter> | null>(null);
+  if (sessionStoreRef.current === null) {
+    sessionStoreRef.current = createSessionStoreAdapter(
+      SESSION_RECORDS_ENABLED && hostRuntime.mode === "free" ? getBrowserSessionStorage() : null,
+    );
+  }
+  const [sessionState, setSessionState] = useState<SessionStoreState>(() => sessionStoreRef.current!.read());
+  const sessionStateRef = useRef(sessionState);
+  const updateSessionState = useCallback((update: (state: SessionStoreState) => SessionStoreState) => {
+    const next = update(sessionStateRef.current);
+    sessionStateRef.current = next;
+    setSessionState(next);
+    sessionStoreRef.current?.write(next);
+  }, []);
   const hostCallbacksRef = useRef(host?.callbacks);
   hostCallbacksRef.current = host?.callbacks;
   const hostEventSinkRef = useRef<HostEventSinkV1 | null>(null);
@@ -233,8 +267,11 @@ export default function NumberLineJumper({
   // Null until a first completed run; a remount/reload starts a fresh visit.
   const [visitBests, setVisitBests] = useState<VisitBests | null>(null);
   const [visitDelta, setVisitDelta] = useState({ averageError: false, closeStreak: false });
+  const [sessionDelta, setSessionDelta] = useState({ averageError: false, closeStreak: false });
 
   const rngRef = useRef<() => number>(() => 0.5);
+  const runSeedRef = useRef(0);
+  const rngCallsRef = useRef(0);
   const exploreRngRef = useRef<() => number>(() => 0.5);
   const adaptiveGeneratorStateRef = useRef<AdaptiveTargetGeneratorState>(createAdaptiveTargetGeneratorState());
   const runBandRef = useRef<PlacementBand | null>(null);
@@ -246,6 +283,7 @@ export default function NumberLineJumper({
   const roundFinalizedRef = useRef(false);
   const hostBreakCompletedRef = useRef(false);
   const hostAutoStartRef = useRef(false);
+  const restoredRevealRef = useRef(false);
   const exitRequestedRef = useRef(false);
   const visitBestsRef = useRef<VisitBests | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -260,6 +298,7 @@ export default function NumberLineJumper({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const advanceTimerRef = useRef<number | null>(null);
+  const markerNormRef = useRef(0.5);
   const lineId = useId();
   const valueId = useId();
   const warmupLineId = useId();
@@ -273,6 +312,46 @@ export default function NumberLineJumper({
       advanceTimerRef.current = null;
     }
   }, []);
+
+  const clearSavedRound = useCallback(() => {
+    const next = { ...sessionStateRef.current, inProgress: null };
+    sessionStateRef.current = next;
+    setSessionState(next);
+    if (next.bests === null) sessionStoreRef.current?.clear();
+    else sessionStoreRef.current?.write(next);
+  }, []);
+
+  const persistCurrentRound = useCallback(() => {
+    if (!SESSION_RECORDS_ENABLED || exitRequestedRef.current || hostRuntime.mode !== "free") return;
+    if ((phase !== "playing" && phase !== "reveal") || !band || !target) return;
+    const snapshot: StoredRound = {
+      version: 1,
+      savedAt: Date.now(),
+      roundNumber: Math.max(1, roundNumberRef.current),
+      band,
+      mode: runModeRef.current,
+      phase,
+      targetIndex,
+      target,
+      trials: [...trials],
+      scoreTotal,
+      timeLeft,
+      markerNorm: markerNormRef.current,
+      committed: phase === "reveal" && committed,
+      seed: runSeedRef.current,
+      rngCalls: rngCallsRef.current,
+      adaptiveGeneratorState: adaptiveGeneratorStateRef.current,
+    };
+    updateSessionState((state) => ({
+      ...state,
+      inProgress: snapshot,
+      nextRoundNumber: Math.max(state.nextRoundNumber, snapshot.roundNumber + 1),
+    }));
+  }, [band, committed, hostRuntime.mode, phase, scoreTotal, target, targetIndex, timeLeft, trials, updateSessionState]);
+
+  useEffect(() => {
+    persistCurrentRound();
+  }, [persistCurrentRound]);
 
   useEffect(() => {
     hostEventSink.activate();
@@ -327,6 +406,7 @@ export default function NumberLineJumper({
     if (exitRequestedRef.current) return;
     exitRequestedRef.current = true;
     clearAdvanceTimer();
+    clearSavedRound();
     const context = hostRuntime.sessionContext;
     hostEventSink.emitSessionAggregate({
       version: HOST_CONTRACT_VERSION,
@@ -339,12 +419,13 @@ export default function NumberLineJumper({
     }
     hostEventSink.emitExit({ version: HOST_CONTRACT_VERSION, reason: "user-exit", mode: hostRuntime.mode, context });
     onExit();
-  }, [clearAdvanceTimer, hostEventSink, hostRuntime, onExit]);
+  }, [clearAdvanceTimer, clearSavedRound, hostEventSink, hostRuntime, onExit]);
 
   const endRound = useCallback(() => {
     if (roundFinalizedRef.current) return;
     roundFinalizedRef.current = true;
     clearAdvanceTimer();
+    clearSavedRound();
     playCue("finish");
     const summary = summarizeRound(trialsRef.current);
     const runBand = runBandRef.current;
@@ -365,11 +446,19 @@ export default function NumberLineJumper({
     visitBestsRef.current = result.bests;
     setVisitBests(result.bests);
     setVisitDelta(result.delta);
+    const sessionResult = updateVisitBests(sessionStateRef.current.bests, summary);
+    setSessionDelta(sessionResult.delta);
+    updateSessionState((state) => ({
+      ...state,
+      bests: sessionResult.bests,
+      inProgress: null,
+      nextRoundNumber: Math.max(state.nextRoundNumber, roundNumberRef.current + 1),
+    }));
     setPhase("done");
     setCommitted(false);
     setLastScore(null);
     setAnnounce("");
-  }, [clearAdvanceTimer, hostEventSink, hostRuntime, playCue]);
+  }, [clearAdvanceTimer, clearSavedRound, hostEventSink, hostRuntime, playCue, updateSessionState]);
 
   const nextTarget = useCallback((completedTrials: readonly TrialRecord[]) => {
     clearAdvanceTimer();
@@ -407,9 +496,11 @@ export default function NumberLineJumper({
 
   function prepareRound(id: PlacementBand) {
     clearAdvanceTimer();
+    clearSavedRound();
     roundFinalizedRef.current = false;
     const nextSeed = newGameSeed();
-    rngRef.current = mulberry32(nextSeed);
+    runSeedRef.current = nextSeed;
+    rngRef.current = trackedMulberry32(nextSeed, rngCallsRef);
     runBandRef.current = id;
     runModeRef.current = mode;
     adaptiveGeneratorStateRef.current = createAdaptiveTargetGeneratorState();
@@ -436,7 +527,15 @@ export default function NumberLineJumper({
     setWarmupRevealed(false);
     setAnnounce("");
     setTarget(first.target);
+    markerNormRef.current = 0.5;
     setMarkerNorm(0.5);
+    setSessionDelta({ averageError: false, closeStreak: false });
+  }
+
+  function claimNextRoundNumber() {
+    const next = Math.max(sessionStateRef.current.nextRoundNumber, roundNumberRef.current + 1);
+    roundNumberRef.current = next;
+    updateSessionState((state) => ({ ...state, nextRoundNumber: Math.max(state.nextRoundNumber, next + 1) }));
   }
 
   function selectBand(id: PlacementBand) {
@@ -445,17 +544,57 @@ export default function NumberLineJumper({
       setPhase("intro");
       return;
     }
-    roundNumberRef.current += 1;
+    claimNextRoundNumber();
     setPhase("playing");
     playCue("start");
   }
 
   function startRound(id: PlacementBand) {
     prepareRound(id);
-    roundNumberRef.current += 1;
+    claimNextRoundNumber();
     setPhase("playing");
     playCue("start");
   }
+
+  function resumeSavedRound() {
+    const saved = sessionStateRef.current.inProgress;
+    if (!saved || hostRuntime.mode !== "free") return;
+    clearAdvanceTimer();
+    roundFinalizedRef.current = false;
+    runBandRef.current = saved.band;
+    runModeRef.current = saved.mode;
+    runSeedRef.current = saved.seed;
+    rngRef.current = trackedMulberry32(saved.seed, rngCallsRef, saved.rngCalls);
+    adaptiveGeneratorStateRef.current = saved.adaptiveGeneratorState;
+    targetIndexRef.current = saved.targetIndex;
+    trialsRef.current = [...saved.trials];
+    sessionTrialsRef.current = [...saved.trials];
+    roundNumberRef.current = saved.roundNumber;
+    restoredRevealRef.current = saved.phase === "reveal";
+    setBand(saved.band);
+    setMode(saved.mode);
+    setTargetIndex(saved.targetIndex);
+    setTarget(saved.target);
+    setTrials([...saved.trials]);
+    setScoreTotal(saved.scoreTotal);
+    setTimeLeft(saved.timeLeft);
+    markerNormRef.current = saved.markerNorm;
+    setMarkerNorm(saved.markerNorm);
+    setCommitted(saved.committed);
+    setLastScore(saved.committed ? scorePlacement(saved.markerNorm, saved.target) : null);
+    setShowHint(false);
+    setAnnounce("Your saved round is back. Keep estimating from the midpoint.");
+    setPhase(saved.phase);
+  }
+
+  useEffect(() => {
+    if (!restoredRevealRef.current || phase !== "reveal" || !lastScore) return;
+    restoredRevealRef.current = false;
+    if (waitForMe) return;
+    const delay = revealMs(lastScore.closeness, prefersReducedMotion());
+    advanceTimerRef.current = window.setTimeout(() => advanceReveal(trialsRef.current), delay);
+    return clearAdvanceTimer;
+  }, [advanceReveal, clearAdvanceTimer, lastScore, phase, waitForMe]);
 
   useEffect(() => {
     if (hostAutoStartRef.current || !hostRuntime.autoStart || !hostRuntime.initialBand) return;
@@ -465,6 +604,7 @@ export default function NumberLineJumper({
 
   function goToSetup() {
     clearAdvanceTimer();
+    clearSavedRound();
     setBand(null);
     setTarget(null);
     setPhase("setup");
@@ -473,6 +613,7 @@ export default function NumberLineJumper({
 
   function beginExplore() {
     clearAdvanceTimer();
+    clearSavedRound();
     exploreRngRef.current = mulberry32(newGameSeed());
     setBand(null);
     setTarget(null);
@@ -485,6 +626,22 @@ export default function NumberLineJumper({
     pinchRef.current = null;
     setPhase("explore");
     setAnnounce("");
+  }
+
+  function clearSessionRecords() {
+    const empty: SessionStoreState = {
+      version: 1,
+      bests: null,
+      inProgress: null,
+      nextRoundNumber: 1,
+    };
+    sessionStateRef.current = empty;
+    setSessionState(empty);
+    sessionStoreRef.current?.clear();
+    setVisitBests(null);
+    visitBestsRef.current = null;
+    setVisitDelta({ averageError: false, closeStreak: false });
+    setSessionDelta({ averageError: false, closeStreak: false });
   }
 
   /** GAME-5: zoom the Explore window, preserving the jumper's value when possible. */
@@ -575,6 +732,7 @@ export default function NumberLineJumper({
 
   function setActiveNorm(next: number) {
     pendingPointerNormRef.current = null;
+    markerNormRef.current = next;
     if (phase === "intro") setWarmupNorm(next);
     else if (phase === "explore") setExploreNorm(next);
     else setMarkerNorm(next);
@@ -706,6 +864,7 @@ export default function NumberLineJumper({
     draggingRef.current = false;
     trackRectRef.current = null;
     flushPointerNorm();
+    persistCurrentRound();
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
@@ -762,6 +921,7 @@ export default function NumberLineJumper({
   function moveMarker(next: number) {
     const clamped = Math.min(1, Math.max(0, next));
     setActiveNorm(clamped);
+    if (phase === "playing") persistCurrentRound();
     const range = activeRange();
     const value = valueAtPosition(clamped, range);
     setAnnounce(
@@ -814,6 +974,23 @@ export default function NumberLineJumper({
           <button type="button" className="link-button" onClick={exitGame}>All games</button>
         </div>
         <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
+
+        {SESSION_RECORDS_ENABLED && (sessionState.inProgress || sessionState.bests) ? (
+          <div className="nl-session-card" data-testid="session-records">
+            <strong>Same-tab session</strong>
+            {sessionState.inProgress ? (
+              <>
+                <p className="microcopy">You have an unfinished {sessionState.inProgress.mode} round on {BAND_META[sessionState.inProgress.band].label}, trial {Math.min(sessionState.inProgress.targetIndex + 1, ROUND_MAX_TRIALS)} of {ROUND_MAX_TRIALS}.</p>
+                <div className="demo-controls nl-action-row">
+                  <button type="button" className="button primary" onClick={resumeSavedRound}>Resume saved round</button>
+                  <button type="button" className="button subtle" onClick={clearSavedRound}>Discard saved round</button>
+                </div>
+              </>
+            ) : null}
+            {sessionState.bests ? <p className="microcopy">Session best: {formatAverageError(sessionState.bests.averageError)} average error · {sessionState.bests.closeStreak} close streak.</p> : null}
+            <button type="button" className="link-button" onClick={clearSessionRecords}>Clear session records</button>
+          </div>
+        ) : null}
 
         {hostRuntime.initialBand && !hostRuntime.autoStart ? (
           <p className="microcopy">Suggested level: {BAND_META[hostRuntime.initialBand].label}. You can choose another.</p>
@@ -1086,7 +1263,7 @@ export default function NumberLineJumper({
             onPointerCancel={onPointerUp}
             onWheel={(event) => {
               // GAME-5: wheel zoom; discrete steps keep tick math exact.
-              event.preventDefault();
+              if (event.cancelable) event.preventDefault();
               zoomExplore(exploreZoom + (event.deltaY > 0 ? -1 : 1));
             }}
             onKeyDown={onKeyDown}
@@ -1130,6 +1307,8 @@ export default function NumberLineJumper({
     const closeRate = Math.round(aggregates.pctClose ?? 0);
     const bestsLine = visitBestsLine(visitBests);
     const callouts = recordCallouts(visitDelta, summary);
+    const sessionLine = sessionBestsLine(sessionState.bests);
+    const sessionCallouts = sessionRecordCallouts(sessionDelta, summary);
     return (
       <div className="demo-panel closing-copy">
         <div className="eyebrow">Round complete</div>
@@ -1140,11 +1319,19 @@ export default function NumberLineJumper({
           <div className="brief-box"><span>Avg. error</span><strong>{formatAverageError(aggregates.avgRelativeError ?? 0)}</strong></div>
           <div className="brief-box"><span>Best avg error this visit</span><strong>{visitBests ? formatAverageError(visitBests.averageError) : "—"}</strong></div>
           <div className="brief-box"><span>Best close streak this visit</span><strong>{visitBests ? visitBests.closeStreak : "—"}</strong></div>
+          {SESSION_RECORDS_ENABLED ? <div className="brief-box"><span>Best avg error this session</span><strong>{sessionState.bests ? formatAverageError(sessionState.bests.averageError) : "—"}</strong></div> : null}
+          {SESSION_RECORDS_ENABLED ? <div className="brief-box"><span>Best close streak this session</span><strong>{sessionState.bests ? sessionState.bests.closeStreak : "—"}</strong></div> : null}
         </div>
         {bestsLine ? <p className="lede nl-visit-bests" style={{ margin: "0 auto 8px", maxWidth: 520 }}>{bestsLine}</p> : null}
         {callouts.length > 0 ? (
           <p className="lede nl-visit-record" style={{ margin: "0 auto 8px", maxWidth: 520 }}>
             {callouts.map((line) => <strong key={line}>{line}</strong>)}
+          </p>
+        ) : null}
+        {sessionLine ? <p className="lede nl-visit-bests" style={{ margin: "0 auto 8px", maxWidth: 520 }}>{sessionLine}</p> : null}
+        {sessionCallouts.length > 0 ? (
+          <p className="lede nl-visit-record" style={{ margin: "0 auto 8px", maxWidth: 520 }}>
+            {sessionCallouts.map((line) => <strong key={line}>{line}</strong>)}
           </p>
         ) : null}
         <p className="lede" style={{ margin: "0 auto 8px", maxWidth: 520 }}>Close streak this round: <strong>{summary.bestStreak}</strong></p>

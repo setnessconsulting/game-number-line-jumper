@@ -16,6 +16,7 @@ export default defineConfig({
         "src/lib/numberLineJumper/aggregates.ts",
         "src/lib/numberLineJumper/adaptive.ts",
         "src/lib/numberLineJumper/visitBests.ts",
+        "src/lib/numberLineJumper/sessionStore.ts",
         "src/lib/numberLineJumper/sound.ts",
         "src/lib/numberLineJumper/explorePrompt.ts",
         "src/lib/numberLineJumper/hostContract.ts",
