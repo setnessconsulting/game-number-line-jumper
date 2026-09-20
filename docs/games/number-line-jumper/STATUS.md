@@ -15,6 +15,10 @@ Last reviewed: 2026-09-20
 - The current production artifact and games-site promotion remain governed by
   the exact release evidence and final GAME-224 acceptance, not by this
   benchmark document alone.
+- GAME-223's child-interaction claim is withdrawn. Its bounded protocol and
+  explicit not-run record are in
+  [`../../NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md`](../../NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md);
+  no participant result is part of release evidence.
 
 ## Remaining release gates
 

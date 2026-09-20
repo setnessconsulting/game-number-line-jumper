@@ -21,7 +21,7 @@
 - GAME-220 — Done in PR #10; learner-paced reveal/announcement integrity.
 - GAME-221 — repository motion authority selected for this wave; Figma is not required and `MOTION.md` is the checked-in contract.
 - GAME-222 — benchmark remediation ledger.
-- GAME-223 — bounded owner-run child interaction protocol where the associated claim is retained.
+- GAME-223 — **Won't Do** after the owner withdrew the child-interaction claim; the bounded protocol and explicit not-run record are retained in `docs/NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md`.
 - GAME-224 — final release acceptance.
 
 ## Game-design work
