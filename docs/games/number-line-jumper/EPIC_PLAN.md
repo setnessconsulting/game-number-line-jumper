@@ -27,13 +27,13 @@
 ## Game-design work
 
 - GAME-229 — **Won't Do**; scored zoom declined, Explore-only boundary retained.
-- GAME-230 — accuracy-correlated reveal motion; implementation wave in progress.
+- GAME-230 — Done in PR #11; accuracy-correlated reveal motion and reduced-motion behavior are merged.
 - GAME-231 — Done; deterministic Explore prompt fix.
 - GAME-232 — this design package.
 
 ## Curriculum / host integration
 
-GAME-233 CCSS registry; GAME-234 completion/session-plan; GAME-235 shared clock; GAME-225 placement mapping; GAME-226 earned-break integration; GAME-227 guarded session records; GAME-228 on-device parent-brief/event contract.
+GAME-233 CCSS registry; GAME-234 completion/session-plan; GAME-235 shared clock; GAME-225 placement mapping; GAME-226 earned-break integration; GAME-227 guarded session records (implementation wave); GAME-228 on-device parent-brief/event contract.
 
 ## Authoritative order
 

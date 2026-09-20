@@ -41,6 +41,12 @@ export function visitBestsLine(bests: VisitBests | null): string | null {
   return `Best this visit — avg. error ${formatError(bests.averageError)}, close streak ${bests.closeStreak} (clears when you reload).`;
 }
 
+/** Browser-tab session copy; distinct from the page-memory visit line. */
+export function sessionBestsLine(bests: VisitBests | null): string | null {
+  if (bests === null) return null;
+  return `Best this session — avg. error ${formatError(bests.averageError)}, close streak ${bests.closeStreak} (clears when you close this tab).`;
+}
+
 /**
  * Fold a completed run's authoritative summary into the visit bests.
  * A run is only eligible when at least one trial was played; zero-trial
@@ -81,6 +87,18 @@ export function recordCallouts(delta: VisitBestDelta, summary: RoundSummary): st
   }
   if (delta.closeStreak) {
     lines.push(`New best close streak this visit — ${summary.bestStreak} in a row. Your midpoint habit is paying off.`);
+  }
+  return lines;
+}
+
+/** Session-scoped counterpart used after a browser-tab record improves. */
+export function sessionRecordCallouts(delta: VisitBestDelta, summary: RoundSummary): string[] {
+  const lines: string[] = [];
+  if (delta.averageError) {
+    lines.push(`New best average error this session — ${formatError(summary.averageError)}. Every estimate is sharpening your number line.`);
+  }
+  if (delta.closeStreak) {
+    lines.push(`New best close streak this session — ${summary.bestStreak} in a row. Your midpoint habit is paying off.`);
   }
   return lines;
 }

@@ -22,6 +22,7 @@
 | `src/lib/numberLineJumper/adaptive.ts` | copied unchanged | Seeded, bounded, current-run-only adaptation. |
 | `src/lib/numberLineJumper/aggregates.ts` | copied unchanged | Session aggregate contract; no persistence or transport. |
 | `src/lib/numberLineJumper/visitBests.ts` | copied unchanged | React page-session bests support. |
+| `src/lib/numberLineJumper/sessionStore.ts` | standalone implementation | GAME-227's guarded, versioned browser-tab continuity boundary; no LevelBest storage or transport is imported. |
 | `src/lib/numberLineJumper/sound.ts` | mechanical standalone adaptation | Source logic is unchanged; the alias resolves inside this repository. Web Audio remains opt-in. |
 | `src/app/games/NumberLineJumper.tsx` | mechanical standalone adaptation | Shipping React surface retained at the same app path; host callback remains the existing `onExit` seam. |
 | Number Line Jumper unit tests | copied with path-preserving relocation | Tests remain executable parity evidence under `tests/`. |
@@ -81,7 +82,7 @@ Remote branch `codex/game-291-bootstrap` was cloned at `8b72de3ec0feb3d516ebcd89
 
 The standalone repository now owns the PR/main quality gate; browser checks do not depend on the legacy application repository.
 
-- `npm run test:coverage` runs the 11 Vitest files with V8 coverage. The denominator is explicit: the game engine, aggregates, adaptive logic, visit bests, sound, Explore prompt, host contract, placement adapter, and seeded random helper. Each runtime module is held to at least 90% lines, branches, and functions. The type-only `types.ts` declarations are intentionally excluded because they emit no runtime behavior; no executable critical module is excluded.
+- `npm run test:coverage` runs the Vitest files with V8 coverage. The denominator is explicit: the game engine, aggregates, adaptive logic, visit bests, guarded session store, sound, Explore prompt, host contract, placement adapter, and seeded random helper. Each runtime module is held to at least 90% lines, branches, and functions. The type-only `types.ts` declarations are intentionally excluded because they emit no runtime behavior; no executable critical module is excluded.
 - The production browser config uses desktop Chromium and mobile WebKit against the normal production build on port 4173. Accessibility checks use that same build on port 4174. GAME-292 host-lifecycle journeys run against a separate test-only host-harness build on port 4175, not in the learner artifact.
 - A shared Playwright fixture fails tests on browser console errors and uncaught page errors. Playwright retry count is zero in every config; traces and reports preserve original failures.
 - CI always performs typecheck, lint, unit/coverage, production and host-test builds, the source/IP scan, and learner-bundle assertion. It classifies README/docs-only diffs to skip only the expensive browser matrix; a manual `workflow_dispatch` runs the complete matrix regardless of changed paths.

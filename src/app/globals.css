@@ -180,6 +180,9 @@ h3 { font-size: 20px; line-height: 1.2; margin-bottom: 10px; }
 .nl-privacy-note { margin-top: 18px; }
 .nl-visit-bests { color: var(--muted); }
 .nl-visit-record strong { display: block; color: var(--primary-dark); }
+.nl-session-card { display: grid; gap: 8px; margin: 20px 0 0; padding: 14px 16px; border: 1px solid #d9e3ff; border-radius: 14px; background: #f6f8ff; text-align: left; }
+.nl-session-card > strong { color: var(--primary-dark); }
+.nl-session-card .link-button { justify-self: start; min-height: 40px; padding: 4px 0; }
 
 @keyframes nl-pop { 0% { transform: scale(0.85); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
 @keyframes nl-far-settle { 0% { transform: translateY(-2px) scale(.98); } 70% { transform: translateY(0) scale(var(--nl-reveal-settle-scale, 1.02)); } 100% { transform: translateY(0) scale(1); } }

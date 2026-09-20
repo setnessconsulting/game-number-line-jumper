@@ -18,6 +18,7 @@ The existing flat documents are supporting evidence or contract detail rather th
 - `docs/PARITY.md` — GAME-291 source provenance and extraction/parity evidence.
 - `docs/HOST_CONTRACT.md` — GAME-292 host-contract detail.
 - `docs/GAMES_SITE_RELEASE.md` — GAME-293 build/publication mechanics.
+- `docs/games/number-line-jumper/SESSION_RECORDS.md` — GAME-227 session continuity and privacy boundary.
 
 Those supporting files do not imply that downstream Figma, benchmark, owner-observed, production-promotion, or final-acceptance gates have passed.
 
@@ -40,7 +41,7 @@ The extraction and parity decisions are recorded in [`docs/PARITY.md`](docs/PARI
 
 The mathematical engine in `src/lib/numberLineJumper/` is pure TypeScript. It owns ranges, seeded generation, adaptive target rhythm, scoring, summaries, session aggregates, visit bests, and Explore zoom math. It has no DOM, React state, clock, storage, network, identity, or host-application dependency. Rendered coordinates are projections of normalized mathematical state; they never become the source of truth.
 
-The React shell in `src/app/games/NumberLineJumper.tsx` preserves the shipping Guided, Challenge, and Explore paths, including whole numbers, fractions, decimals, negatives, accessibility semantics, reduced-motion behavior, opt-in Web Audio, and page-session-only visit bests. Its optional v1 host prop is documented in [`docs/HOST_CONTRACT.md`](docs/HOST_CONTRACT.md); host-specific application wiring remains outside this repository. Explore zoom remains unscored; GAME-229 scored zoom is not implemented.
+The React shell in `src/app/games/NumberLineJumper.tsx` preserves the shipping Guided, Challenge, and Explore paths, including whole numbers, fractions, decimals, negatives, accessibility semantics, reduced-motion behavior, opt-in Web Audio, page-session visit bests, and opt-in bounded browser-tab session records. The session payload and rollback flag are documented in [`SESSION_RECORDS.md`](docs/games/number-line-jumper/SESSION_RECORDS.md). Its optional v1 host prop is documented in [`docs/HOST_CONTRACT.md`](docs/HOST_CONTRACT.md); host-specific application wiring remains outside this repository. Explore zoom remains unscored; GAME-229 scored zoom is not implemented.
 
 GAME-292 establishes the standalone host boundary and local integration harness. GAME-293 adds the static-web build/release contract used by games-site; public catalog selection, promotion, rollback, and hosted acceptance remain owned by `setnessconsulting/games-site`. LevelBest-specific lesson wiring and downstream quality stories remain separately scoped.
 
@@ -69,7 +70,7 @@ npm run test:a11y
 npm run test:host
 ```
 
-The coverage gate uses V8 coverage for the engine, adaptive/scoring modules, host contract and adapters, Explore prompt, sound, visit-bests, and seeded random helper. Each included module must reach at least 90% lines, branches, and functions. The type-only `types.ts` module is intentionally outside the runtime coverage denominator; no executable critical module is excluded.
+The coverage gate uses V8 coverage for the engine, adaptive/scoring modules, host contract and adapters, Explore prompt, sound, visit-bests, guarded session records, and seeded random helper. Each included module must reach at least 90% lines, branches, and functions. The type-only `types.ts` module is intentionally outside the runtime coverage denominator; no executable critical module is excluded.
 
 `npm run test:e2e` builds the learner production artifact and tests it through Vite preview on port 4173 across desktop Chromium, desktop Firefox, and mobile WebKit. The accessibility suite uses the same production artifact and its own preview port (4174), with desktop Chromium and mobile WebKit. The host-lifecycle suite uses a separate test-only build and port (4175), so the local harness is not included in the learner artifact. Browser `console.error` and uncaught page errors fail every browser suite; Playwright retries are explicitly disabled so reruns cannot conceal the first failure. Install the Playwright Chromium, Firefox, and WebKit browsers once when needed:
 
@@ -85,7 +86,7 @@ Pull requests and pushes always run typecheck, lint, unit/coverage checks, both 
 
 The IP scan checks `src/`, `public/` when present, `index.html`, and the production bundle. Benchmark/provenance documentation and tests are separate from shipped source; GAME-222's comparison ledger remains its own deferred story. The learner-bundle gate restricts direct runtime dependencies to React and React DOM and rejects known game-engine, WebGL/Unity, and browser-observability runtimes. The bundle-budget gate records the learner JavaScript raw/gzip delta against the pinned `performance/baseline.json` comparison SHA and fails on a material unexplained increase.
 
-The app is intentionally privacy-minimal: game state and visit bests remain in React memory for the current page session. There are no accounts, trackers, telemetry, Sentry, gameplay network calls, or child-data persistence. The production build uses relative asset URLs so the immutable bundle can be served safely from a versioned games-site subpath; see [`docs/GAMES_SITE_RELEASE.md`](docs/GAMES_SITE_RELEASE.md).
+The app is intentionally privacy-minimal: page visit state remains in React memory, while the separately documented GAME-227 session record is bounded to the current browser tab and contains only generated gameplay facts. There are no accounts, trackers, telemetry, Sentry, gameplay network calls, cookies, `localStorage`, IndexedDB, or child-data persistence. The production build uses relative asset URLs so the immutable bundle can be served safely from a versioned games-site subpath; see [`docs/GAMES_SITE_RELEASE.md`](docs/GAMES_SITE_RELEASE.md).
 
 ## Ownership boundaries
 

@@ -6,6 +6,8 @@ import type { RoundSummary, TrialRecord } from "@/lib/numberLineJumper/types";
 import {
   firstVisitBests,
   recordCallouts,
+  sessionBestsLine,
+  sessionRecordCallouts,
   updateVisitBests,
   visitBestsLine,
 } from "@/lib/numberLineJumper/visitBests";
@@ -144,6 +146,24 @@ describe("visit bests — new-record messaging", () => {
   it("reports the just-completed run's values, not the stored bests", () => {
     const lines = recordCallouts({ averageError: true, closeStreak: false }, { ...FIRST, averageError: 0.123 });
     expect(lines[0]).toContain("12.3%");
+  });
+});
+
+describe("session bests — browser-tab copy", () => {
+  it("uses tab lifetime language for a stored best", () => {
+    expect(sessionBestsLine({ averageError: 0.2, closeStreak: 3 })).toContain("Best this session");
+    expect(sessionBestsLine({ averageError: 0.2, closeStreak: 3 })).toContain("close this tab");
+    expect(sessionBestsLine(null)).toBeNull();
+  });
+
+  it("names the session scope when a stored record improves", () => {
+    const lines = sessionRecordCallouts({ averageError: true, closeStreak: true }, { ...FIRST, averageError: 0.1, bestStreak: 5 });
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("this session");
+    expect(lines[1]).toContain("this session");
+    expect(sessionRecordCallouts({ averageError: false, closeStreak: false }, FIRST)).toEqual([]);
+    expect(sessionRecordCallouts({ averageError: true, closeStreak: false }, { ...FIRST, averageError: 0.1 })).toHaveLength(1);
+    expect(sessionRecordCallouts({ averageError: false, closeStreak: true }, { ...FIRST, bestStreak: 5 })).toHaveLength(1);
   });
 });
 

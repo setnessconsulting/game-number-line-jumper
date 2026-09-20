@@ -281,7 +281,7 @@ test.describe("Number Line Jumper browser flow", () => {
     expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
   });
 
-  test("surfaces session-only visit bests with record callouts and reload reset", async ({ page }) => {
+  test("surfaces visit and tab-session bests while only visit records reset", async ({ page }) => {
     // Keep the comparison between the two intentionally different placement
     // strategies deterministic; runtime gameplay remains time-seeded.
     await page.addInitScript(() => {
@@ -320,19 +320,22 @@ test.describe("Number Line Jumper browser flow", () => {
     await landTenTrials(null);
     await expect(page.getByText(/New best (average error|close streak) this visit/).first()).toBeVisible();
 
-    // Visit bests are page-session memory only: nothing is written to storage.
+    // The visit records are memory-only; the separate tab-session records are
+    // the only storage entry and carry no cookies or cross-site state.
     const storage = await page.evaluate(() => ({
       local: localStorage.length,
       session: sessionStorage.length,
       cookies: document.cookie.length,
     }));
     expect(storage.local).toBe(0);
-    expect(storage.session).toBe(0);
+    expect(storage.session).toBe(1);
     expect(storage.cookies).toBe(0);
 
-    // Reloading the page starts a fresh visit with no previous records.
+    // Reloading starts a fresh page visit while the browser-tab session record
+    // remains available in the setup card.
     await page.reload();
     await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
+    await expect(page.getByTestId("session-records")).toContainText(/Session best:/);
     await page.getByRole("button", { name: /Grades 1/ }).click();
     await page.getByRole("button", { name: "Start guided round" }).click();
     await expect(page.getByRole("slider")).toBeVisible();
@@ -340,8 +343,30 @@ test.describe("Number Line Jumper browser flow", () => {
     await page.getByRole("button", { name: "Land here" }).click();
     await expect(page.getByRole("status")).toContainText("Your estimate");
     await expect(page.getByRole("button", { name: "Land here" })).toBeVisible();
-    // Fresh visit: no "Best this visit —" line exists yet in this session.
+    // Fresh visit: no "Best this visit —" line exists yet in this round.
     await expect(page.getByText(/Best this visit —/)).toHaveCount(0);
+  });
+
+  test("offers a schema-validated interrupted round after reload", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Date, "now", { configurable: true, value: () => 712 });
+    });
+    await openJumper(page);
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+    const slider = page.getByRole("slider");
+    await slider.press("ArrowRight");
+    await expect(page.getByRole("button", { name: "Land here" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByTestId("session-records")).toContainText("unfinished guided round");
+    await page.getByRole("button", { name: "Resume saved round" }).click();
+    await expect(page.getByText(/Number Line Jumper · Score/)).toBeVisible();
+    await expect(page.getByText(/Trial 1 of 10/)).toBeVisible();
+    await expect(page.getByRole("slider")).toHaveAttribute("aria-valuenow", "52");
+
+    await page.getByRole("button", { name: "Exit" }).click();
+    expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
   });
 });
 
