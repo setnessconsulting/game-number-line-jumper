@@ -23,6 +23,7 @@ The existing flat documents are supporting evidence or contract detail rather th
 - `docs/GAMES_SITE_RELEASE.md` — GAME-293 build/publication mechanics.
 - `docs/games/number-line-jumper/SESSION_RECORDS.md` — GAME-227 session continuity and privacy boundary.
 - `docs/games/number-line-jumper/CURRICULUM_SKILLS.md` — GAME-233 CCSS alignment and generated-target coverage contract.
+- `docs/NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md` — GAME-223 bounded protocol and explicit withdrawn/not-run record.
 
 Those supporting files do not imply that downstream Figma, benchmark, owner-observed, production-promotion, or final-acceptance gates have passed.
 
