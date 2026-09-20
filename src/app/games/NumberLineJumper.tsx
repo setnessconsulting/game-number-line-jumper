@@ -47,6 +47,7 @@ import type {
   NumberLineJumperHostV1,
 } from "@/lib/numberLineJumper/hostContract";
 import { closeSoundContext, playSoundCue, soundCueForError, type SoundCue } from "@/lib/numberLineJumper/sound";
+import { createSessionClock, type SessionClock } from "@/lib/numberLineJumper/sessionClock";
 import {
   recordCallouts,
   sessionBestsLine,
@@ -181,6 +182,12 @@ function HostBreakBadge({ secondsRemaining }: { secondsRemaining: number | null 
     : <p className="microcopy" role="timer" aria-label={`Break time remaining: ${secondsRemaining} seconds`}>Break · {secondsRemaining}s left</p>;
 }
 
+const browserSessionClockScheduler = {
+  now: () => Date.now(),
+  schedule: (callback: () => void, delayMs: number) => window.setTimeout(callback, delayMs),
+  cancel: (handle: unknown) => window.clearTimeout(handle as number),
+};
+
 /** Module-scope seed source keeps the impure call out of component render scope. */
 function newGameSeed(): number {
   return Date.now() % 1_000_000;
@@ -236,6 +243,8 @@ export default function NumberLineJumper({
   const [phase, setPhase] = useState<Phase>("setup");
   const [mode, setMode] = useState<RoundMode>("guided");
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
+  const timeLeftRef = useRef(ROUND_SECONDS);
+  timeLeftRef.current = timeLeft;
   const [hostBreakSecondsLeft, setHostBreakSecondsLeft] = useState<number | null>(null);
   const [target, setTarget] = useState<Target | null>(null);
   const [markerNorm, setMarkerNorm] = useState(0.5);
@@ -263,6 +272,7 @@ export default function NumberLineJumper({
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [waitForMe, setWaitForMe] = useState(false);
   const [announce, setAnnounce] = useState("");
+  const [clockStatus, setClockStatus] = useState("");
   // Visit bests live in React memory for this page session only.
   // Null until a first completed run; a remount/reload starts a fresh visit.
   const [visitBests, setVisitBests] = useState<VisitBests | null>(null);
@@ -298,6 +308,9 @@ export default function NumberLineJumper({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const advanceTimerRef = useRef<number | null>(null);
+  const roundClockRef = useRef<SessionClock | null>(null);
+  const roundClockVisibilityCleanupRef = useRef<(() => void) | null>(null);
+  const endRoundRef = useRef<() => void>(() => undefined);
   const markerNormRef = useRef(0.5);
   const lineId = useId();
   const valueId = useId();
@@ -311,6 +324,13 @@ export default function NumberLineJumper({
       window.clearTimeout(advanceTimerRef.current);
       advanceTimerRef.current = null;
     }
+  }, []);
+
+  const clearRoundClock = useCallback(() => {
+    roundClockVisibilityCleanupRef.current?.();
+    roundClockVisibilityCleanupRef.current = null;
+    roundClockRef.current?.dispose();
+    roundClockRef.current = null;
   }, []);
 
   const clearSavedRound = useCallback(() => {
@@ -367,13 +387,43 @@ export default function NumberLineJumper({
       setHostBreakSecondsLeft(null);
       return;
     }
+    let displayTimer: number | null = null;
+    let disposed = false;
+    const deadlineEpochMs = hostRuntime.deadlineEpochMs;
+    const finishHostBreak = () => {
+      if (hostBreakCompletedRef.current) return;
+      hostBreakCompletedRef.current = true;
+      setClockStatus("The host break ended. Returning to practice.");
+      const context = hostRuntime.sessionContext;
+      hostEventSink.emitSessionAggregate({
+        version: HOST_CONTRACT_VERSION,
+        reason: "break-complete",
+        aggregate: sessionAggregates({ trials: sessionTrialsRef.current }),
+        context,
+      });
+      hostEventSink.emitReturnToPractice({ version: HOST_CONTRACT_VERSION, reason: "deadline", context });
+    };
     const updateRemaining = () => {
-      setHostBreakSecondsLeft(Math.ceil(Math.max(0, hostRuntime.deadlineEpochMs! - Date.now()) / 1_000));
+      if (disposed) return;
+      if (displayTimer !== null) window.clearTimeout(displayTimer);
+      const remaining = Math.ceil(Math.max(0, deadlineEpochMs - Date.now()) / 1_000);
+      setHostBreakSecondsLeft(remaining);
+      if (remaining > 0) displayTimer = window.setTimeout(updateRemaining, 1_000);
     };
     updateRemaining();
-    const interval = window.setInterval(updateRemaining, 1_000);
-    return () => window.clearInterval(interval);
-  }, [hostRuntime]);
+    const onVisibilityChange = () => {
+      updateRemaining();
+      if (document.visibilityState === "visible" && deadlineEpochMs <= Date.now()) finishHostBreak();
+      else if (document.visibilityState === "hidden") setClockStatus("The host break clock continues while this tab is hidden.");
+      else setClockStatus("The host break clock is active.");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      disposed = true;
+      if (displayTimer !== null) window.clearTimeout(displayTimer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [hostEventSink, hostRuntime]);
 
   useEffect(() => {
     if (hostRuntime.mode !== "break" || hostRuntime.deadlineEpochMs === null) return;
@@ -384,6 +434,7 @@ export default function NumberLineJumper({
     }, () => {
       if (hostBreakCompletedRef.current) return;
       hostBreakCompletedRef.current = true;
+      setClockStatus("The host break ended. Returning to practice.");
       const context = hostRuntime.sessionContext;
       hostEventSink.emitSessionAggregate({
         version: HOST_CONTRACT_VERSION,
@@ -406,6 +457,7 @@ export default function NumberLineJumper({
     if (exitRequestedRef.current) return;
     exitRequestedRef.current = true;
     clearAdvanceTimer();
+    clearRoundClock();
     clearSavedRound();
     const context = hostRuntime.sessionContext;
     hostEventSink.emitSessionAggregate({
@@ -419,12 +471,13 @@ export default function NumberLineJumper({
     }
     hostEventSink.emitExit({ version: HOST_CONTRACT_VERSION, reason: "user-exit", mode: hostRuntime.mode, context });
     onExit();
-  }, [clearAdvanceTimer, clearSavedRound, hostEventSink, hostRuntime, onExit]);
+  }, [clearAdvanceTimer, clearRoundClock, clearSavedRound, hostEventSink, hostRuntime, onExit]);
 
   const endRound = useCallback(() => {
     if (roundFinalizedRef.current) return;
     roundFinalizedRef.current = true;
     clearAdvanceTimer();
+    clearRoundClock();
     clearSavedRound();
     playCue("finish");
     const summary = summarizeRound(trialsRef.current);
@@ -458,7 +511,47 @@ export default function NumberLineJumper({
     setCommitted(false);
     setLastScore(null);
     setAnnounce("");
-  }, [clearAdvanceTimer, clearSavedRound, hostEventSink, hostRuntime, playCue, updateSessionState]);
+    setClockStatus("");
+  }, [clearAdvanceTimer, clearRoundClock, clearSavedRound, hostEventSink, hostRuntime, playCue, updateSessionState]);
+
+  endRoundRef.current = endRound;
+
+  useEffect(() => {
+    if (phase === "playing" && band) {
+      if (roundClockRef.current === null) {
+        const clock = createSessionClock({
+          mode: hostRuntime.mode,
+          durationMs: ROUND_SECONDS * 1_000,
+          initialRemainingMs: timeLeftRef.current * 1_000,
+          scheduler: browserSessionClockScheduler,
+          onChange: ({ remainingMs }) => setTimeLeft(Math.ceil(remainingMs / 1_000)),
+          onExpire: () => endRoundRef.current(),
+        });
+        roundClockRef.current = clock;
+        const onVisibilityChange = () => {
+          const hidden = document.visibilityState === "hidden";
+          clock.setHidden(hidden);
+          if (hostRuntime.mode === "free") {
+            setClockStatus(hidden ? "Round clock paused while this tab is hidden." : "Round clock resumed.");
+          } else {
+            setClockStatus(hidden ? "The host break clock continues while this tab is hidden." : "The host break clock is active.");
+          }
+        };
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        roundClockVisibilityCleanupRef.current = () => document.removeEventListener("visibilitychange", onVisibilityChange);
+        clock.setHidden(document.visibilityState === "hidden");
+        clock.start();
+      } else {
+        roundClockRef.current.resume();
+      }
+      return;
+    }
+    if (phase === "reveal") {
+      roundClockRef.current?.pause();
+      return;
+    }
+    clearRoundClock();
+  }, [band, clearRoundClock, hostRuntime.mode, phase]);
 
   const nextTarget = useCallback((completedTrials: readonly TrialRecord[]) => {
     clearAdvanceTimer();
@@ -496,6 +589,7 @@ export default function NumberLineJumper({
 
   function prepareRound(id: PlacementBand) {
     clearAdvanceTimer();
+    clearRoundClock();
     clearSavedRound();
     roundFinalizedRef.current = false;
     const nextSeed = newGameSeed();
@@ -526,6 +620,7 @@ export default function NumberLineJumper({
     setWarmupNorm(0.5);
     setWarmupRevealed(false);
     setAnnounce("");
+    setClockStatus("");
     setTarget(first.target);
     markerNormRef.current = 0.5;
     setMarkerNorm(0.5);
@@ -604,15 +699,18 @@ export default function NumberLineJumper({
 
   function goToSetup() {
     clearAdvanceTimer();
+    clearRoundClock();
     clearSavedRound();
     setBand(null);
     setTarget(null);
     setPhase("setup");
     setAnnounce("");
+    setClockStatus("");
   }
 
   function beginExplore() {
     clearAdvanceTimer();
+    clearRoundClock();
     clearSavedRound();
     exploreRngRef.current = mulberry32(newGameSeed());
     setBand(null);
@@ -626,6 +724,7 @@ export default function NumberLineJumper({
     pinchRef.current = null;
     setPhase("explore");
     setAnnounce("");
+    setClockStatus("");
   }
 
   function clearSessionRecords() {
@@ -687,23 +786,16 @@ export default function NumberLineJumper({
     }
   }
 
-  useEffect(() => () => clearAdvanceTimer(), [clearAdvanceTimer]);
+  useEffect(() => () => {
+    clearAdvanceTimer();
+    clearRoundClock();
+  }, [clearAdvanceTimer, clearRoundClock]);
 
   useEffect(() => () => {
     if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
   }, []);
 
   useEffect(() => () => closeSoundContext(audioContextRef), []);
-
-  useEffect(() => {
-    if (phase !== "playing") return;
-    if (timeLeft <= 0) {
-      const endTimer = window.setTimeout(() => endRound(), 0);
-      return () => window.clearTimeout(endTimer);
-    }
-    const timer = window.setTimeout(() => setTimeLeft((value) => value - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [phase, timeLeft, endRound]);
 
   useEffect(() => {
     if ((phase === "playing" || phase === "intro" || phase === "explore" || phase === "done") && headingRef.current) {
@@ -1373,6 +1465,7 @@ export default function NumberLineJumper({
         <button type="button" className="link-button" onClick={exitGame}>Exit</button>
       </div>
       <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
+      <p data-testid="clock-status" className="sr-only" aria-live="polite">{clockStatus}</p>
       <div className="progress" aria-hidden="true"><span style={{ width: `${(timeLeft / ROUND_SECONDS) * 100}%` }} /></div>
 
       <div style={{ marginTop: 22 }}>

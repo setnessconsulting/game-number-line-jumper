@@ -22,6 +22,7 @@ export default defineConfig({
         "src/lib/numberLineJumper/hostContract.ts",
         "src/lib/numberLineJumper/placementAdapter.ts",
         "src/lib/numberLineJumper/skills.ts",
+        "src/lib/numberLineJumper/sessionClock.ts",
         "src/lib/games/shared/rng.ts",
       ],
       reporter: ["text", "json-summary", "lcov"],

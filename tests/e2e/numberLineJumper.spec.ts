@@ -6,6 +6,13 @@ async function openJumper(page: Page) {
   await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
 }
 
+async function setVisibility(page: Page, state: "visible" | "hidden") {
+  await page.evaluate((nextState) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: nextState });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+}
+
 test.describe("Number Line Jumper browser flow", () => {
   test("starts every placement band and keeps the round playable", async ({ page }) => {
     for (const label of [/Grades 1/, /Grades 3/, /Grades 5/, /Grades 7/]) {
@@ -192,6 +199,24 @@ test.describe("Number Line Jumper browser flow", () => {
     expect(new Set(samples.map(({ scale }) => scale)).size).toBeGreaterThan(1);
     expect(new Set(samples.map(({ glow }) => glow)).size).toBeGreaterThan(1);
     expect(samples.every(({ intensity, truthIntensity }) => intensity === truthIntensity)).toBe(true);
+  });
+
+  test("pauses the free round clock while hidden and resumes the remaining time", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+    await openJumper(page);
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+
+    await expect(page.locator(".timer")).toHaveText("60s left");
+    await setVisibility(page, "hidden");
+    await expect(page.getByTestId("clock-status")).toHaveText("Round clock paused while this tab is hidden.");
+    await page.clock.fastForward(10_000);
+    await expect(page.locator(".timer")).toHaveText("60s left");
+
+    await setVisibility(page, "visible");
+    await expect(page.getByTestId("clock-status")).toHaveText("Round clock resumed.");
+    await page.clock.fastForward(60_000);
+    await expect(page.getByText(/Round complete/)).toBeVisible();
   });
 
   test("keeps the number line inside a mobile viewport", async ({ page }, testInfo) => {
