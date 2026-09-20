@@ -33,7 +33,7 @@
 
 ## Curriculum / host integration
 
-GAME-233 CCSS registry (pure game-side alignment catalog; host inventory update remains separate); GAME-234 completion/session-plan; GAME-235 shared clock; GAME-225 placement mapping; GAME-226 earned-break integration; GAME-227 guarded session records (implementation wave); GAME-228 on-device parent-brief/event contract.
+GAME-233 CCSS registry (pure game-side alignment catalog; host inventory update remains separate); GAME-234 completion/session-plan; GAME-235 standalone session clock; GAME-225 placement mapping; GAME-226 earned-break integration; GAME-227 guarded session records (implementation wave); GAME-228 on-device parent-brief/event contract.
 
 ## Authoritative order
 
