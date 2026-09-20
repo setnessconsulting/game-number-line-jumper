@@ -12,6 +12,8 @@ The canonical product/design/architecture package is under `docs/games/number-li
 - `EPIC_PLAN.md`
 - `SPRINT_READINESS.md`
 - `BENCHMARK_REVIEW.md`
+- `STATUS.md`
+- `COMPARISON_APPENDIX.md`
 - `SESSION_CLOCK.md`
 
 The existing flat documents are supporting evidence or contract detail rather than competing product requirements sources:
@@ -23,6 +25,11 @@ The existing flat documents are supporting evidence or contract detail rather th
 - `docs/games/number-line-jumper/CURRICULUM_SKILLS.md` — GAME-233 CCSS alignment and generated-target coverage contract.
 
 Those supporting files do not imply that downstream Figma, benchmark, owner-observed, production-promotion, or final-acceptance gates have passed.
+
+The GAME-222 fifteen-dimension benchmark ledger is maintained in
+[`docs/NUMBER_LINE_JUMPER_QUALITY_REVIEW.md`](docs/NUMBER_LINE_JUMPER_QUALITY_REVIEW.md).
+External comparators are explicitly evidence-labeled there; comparator prose
+does not enter the learner bundle.
 
 ## Source provenance
 
