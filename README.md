@@ -19,6 +19,7 @@ The existing flat documents are supporting evidence or contract detail rather th
 - `docs/HOST_CONTRACT.md` — GAME-292 host-contract detail.
 - `docs/GAMES_SITE_RELEASE.md` — GAME-293 build/publication mechanics.
 - `docs/games/number-line-jumper/SESSION_RECORDS.md` — GAME-227 session continuity and privacy boundary.
+- `docs/games/number-line-jumper/CURRICULUM_SKILLS.md` — GAME-233 CCSS alignment and generated-target coverage contract.
 
 Those supporting files do not imply that downstream Figma, benchmark, owner-observed, production-promotion, or final-acceptance gates have passed.
 
@@ -40,6 +41,8 @@ The extraction and parity decisions are recorded in [`docs/PARITY.md`](docs/PARI
 ## Architecture
 
 The mathematical engine in `src/lib/numberLineJumper/` is pure TypeScript. It owns ranges, seeded generation, adaptive target rhythm, scoring, summaries, session aggregates, visit bests, and Explore zoom math. It has no DOM, React state, clock, storage, network, identity, or host-application dependency. Rendered coordinates are projections of normalized mathematical state; they never become the source of truth.
+
+The curriculum registry in `src/lib/numberLineJumper/skills.ts` is a separate pure-data alignment catalog. It does not change generation, scoring, adaptive behavior, placement, or mastery reporting; its tests prove that the generated target surface is neither unmapped nor assigned to multiple rows.
 
 The React shell in `src/app/games/NumberLineJumper.tsx` preserves the shipping Guided, Challenge, and Explore paths, including whole numbers, fractions, decimals, negatives, accessibility semantics, reduced-motion behavior, opt-in Web Audio, page-session visit bests, and opt-in bounded browser-tab session records. The session payload and rollback flag are documented in [`SESSION_RECORDS.md`](docs/games/number-line-jumper/SESSION_RECORDS.md). Its optional v1 host prop is documented in [`docs/HOST_CONTRACT.md`](docs/HOST_CONTRACT.md); host-specific application wiring remains outside this repository. Explore zoom remains unscored; GAME-229 scored zoom is not implemented.
 
