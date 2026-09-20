@@ -12,7 +12,10 @@ function LocalHostHarness() {
   const rawRemainingMs = Number(params.get("remainingMs") ?? "15000");
   const remainingMs = Number.isFinite(rawRemainingMs) && rawRemainingMs >= 0 ? rawRemainingMs : 15_000;
   const invalidPlacement = params.get("placement") === "invalid";
+  const levelBestPlacement = params.get("placement") === "levelbest";
   const placementLevel = params.has("level") ? Number(params.get("level")) : null;
+  const placementGrade = params.has("grade") ? Number(params.get("grade")) : 5;
+  const placementThird = params.get("third") ?? "mid";
   const appendEvent = useCallback((event: string) => {
     setEvents((current) => [...current, event]);
   }, []);
@@ -21,12 +24,20 @@ function LocalHostHarness() {
     version: 1,
     mode: "break",
     autoStart: true,
-    ...(invalidPlacement || placementLevel !== null ? {} : { initialBand: "g12" as const }),
-    ...(invalidPlacement
-      ? { placementResult: { status: "complete" as const, level: 99 } }
-      : placementLevel !== null
-        ? { placementResult: { status: "complete" as const, level: placementLevel } }
-        : {}),
+    ...(invalidPlacement || placementLevel !== null || levelBestPlacement ? {} : { initialBand: "g12" as const }),
+    ...(levelBestPlacement
+      ? {
+          placementResult: {
+            kind: "band" as const,
+            band: { grade: placementGrade, third: placementThird as "early" | "mid" | "late" },
+            levelParam: `${placementGrade}-${placementThird}`,
+          },
+        }
+      : invalidPlacement
+        ? { placementResult: { status: "complete" as const, level: 99 } }
+        : placementLevel !== null
+          ? { placementResult: { status: "complete" as const, level: placementLevel } }
+          : {}),
     timeLimit: { kind: "remaining", remainingMs },
     sessionContext: { surface: "practice", launchReason: "earned-break" },
     callbacks: {
@@ -40,7 +51,7 @@ function LocalHostHarness() {
       onSessionAggregate: (event) => appendEvent(`aggregate:${event.reason}:${event.aggregate.trials}`),
       onError: (event) => appendEvent(`error:${event.severity}:${event.code}`),
     },
-  }), [appendEvent, invalidPlacement, placementLevel, remainingMs]);
+  }), [appendEvent, invalidPlacement, levelBestPlacement, placementGrade, placementLevel, placementThird, remainingMs]);
 
   return (
     <main className="page-shell">

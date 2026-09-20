@@ -41,6 +41,17 @@ test.describe("GAME-292 local host contract harness", () => {
     await expect(page.getByText(/Quick warm-up/)).toBeVisible();
   });
 
+  test("auto-starts from a canonical grade-third placement result", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "The local host lifecycle journey runs once in desktop Chromium.");
+    await page.clock.install({ time: FIXED_TIME });
+    await page.goto("/examples/host-harness.html?placement=levelbest&grade=7&third=late&remainingMs=30000");
+
+    await expect(page.getByRole("slider")).toBeVisible();
+    await expect(page.getByText(/Land on/)).toBeVisible();
+    await page.getByRole("button", { name: "Exit" }).click();
+    await expect(page.getByTestId("host-events")).toContainText("exit:user-exit");
+  });
+
   test("emits one round-completion fact and a session aggregate to the host", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "The local host lifecycle journey runs once in desktop Chromium.");
     await page.clock.install({ time: FIXED_TIME });
