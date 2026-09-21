@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "gameSlug": "number-line-jumper",
+  "issue": "GAME-224",
+  "asOf": "2026-09-20",
+  "decision": "NOT_DONE_PENDING_OWNER_GATES",
+  "candidate": {
+    "version": "main-12641c0",
+    "source": {
+      "repository": "setnessconsulting/game-number-line-jumper",
+      "ref": "main",
+      "commit": "12641c0ad10c72fdeda36cdfd5e057a768f80d56",
+      "sourcePullRequest": 15,
+      "lockfileSha256": "2aef9fda593a7bc50dcf93868f19450520def854e03bb91d462dca0ed0e7e1dc",
+      "buildSha256": "6c41e5033a35bdc2b208f88a6c4e615b45c63409b5bcbc9da8e85234f7e7b70f"
+    },
+    "artifact": {
+      "releaseManifest": "release-manifest.json",
+      "releaseKind": "static-web",
+      "entryFile": "index.html",
+      "publishedAssetPrefix": "/game-assets/number-line-jumper/main-12641c0",
+      "payload": [
+        {
+          "path": "index.html",
+          "size": 517,
+          "sha256": "ac73dfe2f4e9beb35d90db79e53f0255ca8ed5b5bd6772d66714b8af0703dc4a",
+          "contentType": "text/html; charset=utf-8"
+        },
+        {
+          "path": "assets/index-DxC0_HBv.css",
+          "size": 15527,
+          "sha256": "219e8486bef87fa613c45f89c260eac441c4b3c346ccca8ef5ee136afffcc395",
+          "contentType": "text/css; charset=utf-8"
+        },
+        {
+          "path": "assets/index-BNEElzcY.js",
+          "size": 261424,
+          "sha256": "9c0e730907a4994ce151576edd6df66eb5643c7ebfa8071e6b3b693b41d6b8d7",
+          "contentType": "text/javascript; charset=utf-8"
+        }
+      ]
+    }
+  },
+  "evidence": {
+    "game": {
+      "hostedCi": {
+        "run": 35493250973,
+        "url": "https://github.com/setnessconsulting/game-number-line-jumper/actions/runs/35493250973",
+        "commit": "12641c0ad10c72fdeda36cdfd5e057a768f80d56",
+        "result": "passed"
+      },
+      "localReleaseEvidence": {
+        "command": "npm run test:ci",
+        "result": "partial",
+        "notes": "Typecheck, lint, coverage, builds, source and bundle checks, Chromium and mobile WebKit journeys, accessibility, and host checks passed. Windows Firefox cases hit browserType.launch spawn UNKNOWN and two Chromium CPU samples exceeded the local long-task budget; hosted CI for the exact source commit passed."
+      }
+    },
+    "gamesSite": {
+      "repository": "setnessconsulting/games-site",
+      "productionPromotion": {
+        "pullRequest": 13,
+        "pullRequestUrl": "https://github.com/setnessconsulting/games-site/pull/13",
+        "mergeCommit": "a2527d822d351ff175824021e26258b19c9da59b",
+        "hostedCheckRun": 35545944599,
+        "hostedCheckUrl": "https://github.com/setnessconsulting/games-site/actions/runs/35545944599",
+        "result": "passed"
+      },
+      "liveVerification": {
+        "observedOn": "2026-09-20",
+        "collection": [
+          {
+            "url": "https://games-site-7pn.pages.dev/#collection",
+            "status": 200,
+            "numberLineJumperPlayable": true
+          },
+          {
+            "url": "https://games.setnessconsulting.com/#collection",
+            "status": 200,
+            "numberLineJumperPlayable": true
+          }
+        ],
+        "launcher": [
+          {
+            "url": "https://games-site-7pn.pages.dev/number-line-jumper/play/",
+            "status": 200,
+            "selectedVersion": "main-12641c0"
+          },
+          {
+            "url": "https://games.setnessconsulting.com/number-line-jumper/play/",
+            "status": 200,
+            "selectedVersion": "main-12641c0"
+          }
+        ],
+        "candidateAssets": {
+          "entry": {
+            "url": "https://games-site-7pn.pages.dev/game-assets/number-line-jumper/main-12641c0/index.html",
+            "status": 200,
+            "contentType": "text/html; charset=utf-8"
+          },
+          "javascript": {
+            "path": "assets/index-BNEElzcY.js",
+            "status": 200,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          "stylesheet": {
+            "path": "assets/index-DxC0_HBv.css",
+            "status": 200,
+            "contentType": "text/css; charset=utf-8"
+          }
+        },
+        "invalidVersionStatus": 404,
+        "previousVersionRouteStatus": 404,
+        "previousVersionRouteNote": "The prior pr8-c7428853083f artifact was not overwritten; the production function denies it because only the selected exact version is allowlisted."
+      },
+      "rollbackRehearsal": {
+        "result": "passed",
+        "oldVersion": "pr8-c7428853083f",
+        "rollbackPullRequest": 12,
+        "rollbackMergeCommit": "a3b5bd8ed486347bc93c503206a3e1f1bdd623aa",
+        "restorationMergeCommit": "a2527d822d351ff175824021e26258b19c9da59b",
+        "evidenceDocument": "games-site/docs/number-line-jumper-rollback.md"
+      }
+    }
+  },
+  "ownerGates": [
+    {
+      "id": "GAME-219-current-candidate-device-pass",
+      "status": "pending",
+      "required": "Owner-observed Android or iOS and desktop browser pass against main-12641c0 in production.",
+      "priorEvidence": {
+        "version": "pr8-c7428853083f",
+        "result": "pass",
+        "applicableToThisCandidate": false
+      }
+    },
+    {
+      "id": "GAME-224-screen-reader-pass",
+      "status": "pending",
+      "required": "Owner-observed screen-reader validation using the exact accepted candidate, with NVDA or VoiceOver and the documented release flow."
+    }
+  ],
+  "scopeDisposition": {
+    "GAME-221": "repository motion authority accepted; no Figma file exists",
+    "GAME-223": "Wont Do; child-interaction claim withdrawn and protocol retained as explicitly not run",
+    "GAME-226": "deferred host integration",
+    "GAME-228": "deferred host integration",
+    "GAME-229": "Wont Do; scored zoom declined",
+    "GAME-234": "deferred host integration"
+  },
+  "nextActions": [
+    "Run the owner device pass against main-12641c0 in production.",
+    "Run the owner screen-reader pass against the same candidate.",
+    "Record both receipts in GAME-224 and update this manifest to ACCEPTED only after the exact evidence resolves."
+  ]
+}
