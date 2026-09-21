@@ -24,6 +24,11 @@
 - GAME-223 — **Won't Do** after the owner withdrew the child-interaction claim; the bounded protocol and explicit not-run record are retained in `docs/NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md`.
 - GAME-224 — final release acceptance.
 
+The exact production candidate and current release-gate state are recorded in
+[`RELEASE_ACCEPTANCE.json`](./RELEASE_ACCEPTANCE.json). It remains pending
+until the owner device and screen-reader gates are observed against that exact
+candidate.
+
 ## Game-design work
 
 - GAME-229 — **Won't Do**; scored zoom declined, Explore-only boundary retained.
