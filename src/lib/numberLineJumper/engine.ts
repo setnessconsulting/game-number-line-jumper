@@ -883,9 +883,24 @@ export function generateRoundTargets(
 export const EXACT_THRESHOLD = 0.05; // ≤ 5 %
 export const CLOSE_THRESHOLD = 0.15; // ≤ 15 %
 
-function closenessFromError(error: number): Closeness {
-  if (error <= EXACT_THRESHOLD) return "exact";
-  if (error <= CLOSE_THRESHOLD) return "close";
+/**
+ * Inclusive tier membership absorbs binary floating-point dust in computed
+ * errors. A nominally exact-threshold placement such as 0.55 on a 0–1 line
+ * with a 0.5 target computes |0.55 − 0.5| = 0.050000000000000044 — one ulp
+ * past the threshold — which a raw `<=` would misclassify and mirror
+ * asymmetrically against 0.45. The tolerance is many orders of magnitude
+ * above that ulp dust and far below the 0.10 tier gap, so genuinely farther
+ * placements can never be pulled into a better tier.
+ */
+const TIER_TOLERANCE = 1e-12;
+
+function meetsThreshold(error: number, threshold: number): boolean {
+  return error <= threshold + TIER_TOLERANCE;
+}
+
+export function closenessFromError(error: number): Closeness {
+  if (meetsThreshold(error, EXACT_THRESHOLD)) return "exact";
+  if (meetsThreshold(error, CLOSE_THRESHOLD)) return "close";
   return "far";
 }
 
