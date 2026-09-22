@@ -35,9 +35,20 @@
 
 ## Known variance
 
-There is no known behavior-affecting variance from source commit `38a9dfa`. The standalone changes are limited to the Vite entry point, local file placement, alias resolution, extraction of only the game CSS rules, removal of LevelBest hub navigation from the browser harness, and replacement of timing sleeps with UI-observable waits. The game callback still exits to a fresh standalone setup view.
+There is no known behavior-affecting variance from source commit `38a9dfa` **except the recorded boundary-classification fix below**. The standalone changes are limited to the Vite entry point, local file placement, alias resolution, extraction of only the game CSS rules, removal of LevelBest hub navigation from the browser harness, and replacement of timing sleeps with UI-observable waits. The game callback still exits to a fresh standalone setup view.
 
 The standalone shell does not implement the LevelBest host callback contract; that is an intentional GAME-292 deferral, not a gameplay variance.
+
+### Boundary-classification fix (local automated-test hardening, 2026-09-22)
+
+A bounded boundary-test hardening pass found one defect in the source-tier logic: `closenessFromError` compared the computed relative error to the 5 %/15 % thresholds with a raw `<=`. Binary floating-point dust placed some nominally at-threshold errors one ulp past the limit — for example a 0.55 placement on a 0–1 line with a 0.5 target computes `|0.55 − 0.5| = 0.050000000000000044` — so such placements were misclassified one tier down, and mirrored placements (0.45 vs 0.55) classified asymmetrically. Expected behavior follows the documented contract (≤ 5 % exact, ≤ 15 % close, inclusively and symmetrically).
+
+The smallest correction:
+
+- `engine.ts` tier membership now uses an inclusive, epsilon-tolerant comparison (`1e-12`, seven orders of magnitude above the ulp dust and ten below the 0.10 tier gap; genuinely farther placements cannot be pulled into a better tier).
+- `engine.ts` exports the single `closenessFromError` classifier, and `sound.ts`'s `soundCueForError` now maps its cue from it instead of re-implementing the raw threshold comparison, so the audio cue always agrees with the on-screen closeness at boundaries.
+
+Regression evidence: `tests/numberLineJumperBoundaries.test.ts` (39 focused boundary tests). Four of them failed before the fix and pass after; no other suite behavior changed.
 
 ## Validation record
 
