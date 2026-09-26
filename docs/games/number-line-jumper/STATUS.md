@@ -4,7 +4,7 @@ Last reviewed: 2026-09-26
 
 ## Current state
 
-- Canonical source is clean on `main` at `0c87b2abb0854ff99565ff4e16ce48ed1aa088d0`.
+- The frozen `main-0c87b2a` candidate was built from canonical `main` commit `0c87b2abb0854ff99565ff4e16ce48ed1aa088d0`.
 - PR #21 merged the GAME-355 coaching fix. Large whole-number hints now name nearby anchors; cross-zero hints follow the target's actual sign. The regression cases cover 173, 514, an exact 500 anchor, fractions, decimals, mixed Challenge targets, and both signs.
 - A reproducible static build was generated with `npm run release:evidence -- --version main-0c87b2a`. Its identity and payload hashes are recorded in [`RELEASE_ACCEPTANCE.json`](./RELEASE_ACCEPTANCE.json). This candidate is built locally and has not been published to games-site.
 - Live readback on 2026-09-26 found the launcher still selects `main-12641c0` (HTTP 200); that version's entry asset returns 200 and `main-0c87b2a` returns 404. No new-version promotion or production deployment occurred.
