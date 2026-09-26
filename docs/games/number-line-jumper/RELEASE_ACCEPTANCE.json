@@ -15,7 +15,7 @@
       "sourcePullRequest": 21,
       "sourcePullRequestHead": "4b6324334578c13219f0a6ef9b317f60ac4884a0",
       "lockfileSha256": "2aef9fda593a7bc50dcf93868f19450520def854e03bb91d462dca0ed0e7e1dc",
-      "buildSha256": "65d60c5867b8e9a9c71f186f076652b07f2f130b3ec141092ace537613f2c718"
+      "buildSha256": "a8352a59e3eac89f2af1776825d5a18456c7274c0870cd8276b2bfbe6e8c2c0f"
     },
     "artifact": {
       "releaseManifest": "release-evidence/number-line-jumper-main-0c87b2a.json",
@@ -25,8 +25,8 @@
       "payload": [
         {
           "path": "index.html",
-          "size": 517,
-          "sha256": "98595625bb17b357f62a36dca824c0f51519789ed2e9e65f4f9e00e920067f0c",
+          "size": 504,
+          "sha256": "0b920a984c799cdff1a1a5daf386e231f332408c902edb188191b8917521cf51",
           "contentType": "text/html; charset=utf-8"
         },
         {
@@ -97,13 +97,45 @@
           "Chromium p95 was 17.8 ms against a 16 ms local threshold.",
           "Under 6x CPU throttling, p95 was 76.2 ms against a 50 ms local threshold, with long tasks."
         ],
+        "performanceRetest": {
+          "observedOn": "2026-09-26",
+          "sourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
+          "command": "npx playwright test --config=playwright.config.ts --project=chromium-performance --repeat-each=3 --reporter=list",
+          "repeatEach": 3,
+          "casesPassed": 9,
+          "casesFailed": 0,
+          "typicalP95Ms": [14.9, 15.4, 15.1],
+          "throttled6xP95Ms": [24.3, 20.4, 15.0],
+          "longTasksOver50Ms": 0,
+          "revealBudget": "passed",
+          "interpretation": "The earlier threshold excursions were not reproduced in three complete local Chromium performance-suite repetitions. No game source change was made; retain the earlier readings as historical workstation measurements rather than waiving them."
+        },
         "compositeCiCommand": {
-          "result": "not_passed",
-          "notes": "The first run stopped because port 4173 was occupied. The isolated rerun exercised the browser flows and retained the two local Chromium performance failures."
+          "command": "npm run test:ci",
+          "observedOn": "2026-09-26",
+          "result": "passed",
+          "notes": "The complete local CI command passed: typecheck, lint, 268 coverage tests, production and host builds, IP and learner-bundle guards, 37 E2E tests with 2 expected skips, 12 accessibility tests, 6 host tests, and performance probes. Current drag p95 readings were 15.8 ms typical and 14.0 ms under 6x CPU; no long task exceeded 50 ms and reveal checks passed."
         },
         "lighthouse": {
           "result": "partial",
           "notes": "Windows Chrome profile cleanup returned EPERM after one sample. LCP was about 1.50 seconds; the repeated sample, median, and complete CLS result are unavailable."
+        },
+        "hostedLinuxLighthouse": {
+          "result": "passed",
+          "run": 36212649395,
+          "sourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
+          "runs": 3,
+          "thresholdAssertions": "passed",
+          "rawReportRetained": false,
+          "notes": "Hosted CI logs confirm all three Lighthouse runs completed and LHCI assertions passed. The workflow evidence artifact reported lighthouseLabReports=null because the hidden .lighthouseci directory was excluded from artifact upload. A follow-up workflow change now retains this hidden report directory; its hosted verification is pending."
+        },
+        "buildReproducibility": {
+          "sourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
+          "canonicalArtifact": "hosted Linux verification artifact",
+          "releaseManifestBuildSha256": "a8352a59e3eac89f2af1776825d5a18456c7274c0870cd8276b2bfbe6e8c2c0f",
+          "hostedCiBuildTreeSha256": "4d71da7bfee648053e42c32b46575911396fe2f20a237b73690cbb4aada09fae",
+          "windowsLocalReleaseManifestBuildSha256": "65d60c5867b8e9a9c71f186f076652b07f2f130b3ec141092ace537613f2c718",
+          "finding": "The JS and CSS payloads match, while Windows CRLF output changes index.html bytes. Publication must use the hosted Linux artifact and the matching release manifest."
         },
         "privacyInspection": {
           "result": "passed",
@@ -129,6 +161,12 @@
           "status": 404
         },
         "newCandidatePublished": false
+      },
+      "hostedPreview": {
+        "status": "blocked",
+        "previewVersion": null,
+        "productionPointerUnchanged": true,
+        "blocker": "The cloudflare-business credential profile returned missing allowlisted credential before Wrangler could run; no R2 read/write or Pages deployment change was performed."
       },
       "historicalProductionPromotion": {
         "version": "main-12641c0",
@@ -198,7 +236,7 @@
     {
       "id": "GAME-219-current-candidate-performance-and-device",
       "status": "pending",
-      "required": "Resolve the two recorded local Chromium performance threshold failures and complete owner-observed desktop plus Android or iOS interaction against the exact candidate."
+      "required": "Retain the earlier local threshold excursions, record the passing three-repeat Chromium performance retest, and complete owner-observed desktop plus Android or iOS interaction against the exact candidate."
     },
     {
       "id": "GAME-224-screen-reader-and-release-acceptance",
@@ -221,8 +259,9 @@
     "GAME-234": "Backlog; LevelBest completion/session-plan journey is an external host dependency."
   },
   "nextActions": [
+    "Restore the allowlisted Cloudflare business credential profile before attempting R2 publication or a Pages preview deployment.",
     "Keep main-0c87b2a unpublished until its exact immutable payload is qualified in games-site.",
-    "Resolve the local performance findings and complete owner device and screen-reader observations against the exact candidate.",
+    "Complete owner device and screen-reader observations against the exact candidate.",
     "Complete the GAME-409 human F1 feedback observation.",
     "Update any Done statuses only after the required independent review; keep GAME-3 open while candidate and owner gates remain."
   ]
