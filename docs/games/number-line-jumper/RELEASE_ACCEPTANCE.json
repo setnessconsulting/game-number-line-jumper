@@ -157,7 +157,7 @@
       "commentsAdded": 19,
       "targets": "GAME-3 and each child that was open at the start of reconciliation",
       "readback": "verified",
-      "readbackNote": "The official Jira issue readback confirmed GAME-220 comment 15156 after its bridge acknowledgement process ended; no retry was made.",
+      "readbackNote": "The official Jira issue readback confirmed GAME-3 comment 15143 and GAME-220 comment 15156 after their bridge acknowledgement sessions ended without durable success receipts; no retry was made.",
       "transitions": [
         {"issue": "GAME-221", "from": "Backlog", "to": "Wont Do"},
         {"issue": "GAME-223", "from": "Backlog", "to": "Wont Do"}
