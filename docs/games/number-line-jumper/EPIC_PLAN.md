@@ -11,18 +11,18 @@
 
 1. **GAME-291 — Done.** Standalone bootstrap/parity. Provenance source: `setnessconsulting/levelbest@38a9dfa78e8c1cef2238ba27fd058fc3d9f8a683`; target bootstrap PR #1.
 2. **GAME-292 — Done.** Typed/versioned host contract.
-3. **GAME-293 — In Progress.** Static-web games-site contract and non-promoted routes are implemented on canonical main; final publication/promotion/rollback waits for a validated candidate.
+3. **GAME-293 — Blocked.** Static-web games-site contract and non-promoted routes are implemented on canonical main; `main-0c87b2a` is built but not published, and its versioned asset currently returns 404.
 
 ## Quality and design
 
-- GAME-217 — automated accessibility coverage implemented in PR #10; owner screen-reader validation remains a GAME-224 gate.
+- GAME-217 — In Progress; automated accessibility coverage is implemented in PR #10. Owner screen-reader validation remains a GAME-224 gate.
 - GAME-218 — Done; CI/browser/coverage/console/IP gates.
-- GAME-219 — cross-browser performance budgets/rendering fixes.
-- GAME-220 — Done in PR #10; learner-paced reveal/announcement integrity.
-- GAME-221 — repository motion authority selected for this wave; Figma is not required and `MOTION.md` is the checked-in contract.
-- GAME-222 — benchmark remediation ledger.
-- GAME-223 — **Won't Do** after the owner withdrew the child-interaction claim; the bounded protocol and explicit not-run record are retained in `docs/NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md`.
-- GAME-224 — final release acceptance.
+- GAME-219 — In Progress; cross-browser performance budgets and rendering evidence are recorded. Two local Chromium performance probes failed their thresholds; hosted PR and post-merge CI passed.
+- GAME-220 — Backlog; learner-paced reveal and announcement integrity are implemented and hosted browser checks passed. Recommend Done for automated acceptance; final owner screen-reader acceptance remains under GAME-224.
+- GAME-221 — Wont Do for the Figma-specific child claim; owner-selected repository UX/motion documentation remains authoritative, with no Figma file or comparison claimed.
+- GAME-222 — Backlog; the benchmark remediation ledger is complete. Recommend Done.
+- GAME-223 — Wont Do; the owner withdrew the child-interaction claim. The bounded protocol and explicit not-run record are retained in `docs/NUMBER_LINE_JUMPER_PLAYTEST_PROTOCOL.md`.
+- GAME-224 — Blocked; final release acceptance requires exact-candidate publication and owner device and screen-reader evidence.
 
 The exact production candidate and current release-gate state are recorded in
 [`RELEASE_ACCEPTANCE.json`](./RELEASE_ACCEPTANCE.json). It remains pending
@@ -32,13 +32,13 @@ candidate.
 ## Game-design work
 
 - GAME-229 — **Won't Do**; scored zoom declined, Explore-only boundary retained.
-- GAME-230 — Done in PR #11; accuracy-correlated reveal motion and reduced-motion behavior are merged.
+- GAME-230 — Backlog; accuracy-correlated reveal motion and reduced-motion behavior are merged in PR #11. Recommend Done.
 - GAME-231 — Done; deterministic Explore prompt fix.
-- GAME-232 — this design package.
+- GAME-232 — Done; this design package.
 
 ## Curriculum / host integration
 
-GAME-233 CCSS registry (pure game-side alignment catalog; host inventory update remains separate); GAME-234 completion/session-plan; GAME-235 standalone session clock; GAME-225 placement mapping; GAME-226 earned-break integration; GAME-227 guarded session records (implementation wave); GAME-228 on-device parent-brief/event contract.
+GAME-233 (Backlog; pure game-side CCSS alignment catalog, complete; recommend Done); GAME-234 (Backlog; completion/session-plan, external host dependency); GAME-235 (Backlog; standalone session clock, complete; recommend Done); GAME-225 (Backlog; placement mapping, external host dependency); GAME-226 (Backlog; earned-break integration, external host dependency); GAME-227 (Backlog; guarded session records, implementation complete; recommend Done); GAME-228 (Backlog; on-device parent-brief/event contract, external host dependency); GAME-355 (Backlog; coaching defect fixed in PR #21; recommend Done); GAME-409 (Backlog; human F1 landing/feedback observation remains).
 
 ## Authoritative order
 
