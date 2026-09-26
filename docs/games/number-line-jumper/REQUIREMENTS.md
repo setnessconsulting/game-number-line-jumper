@@ -57,4 +57,4 @@ GAME-292 defines the only supported typed/versioned host seam. Free standalone p
 
 `game-number-line-jumper` owns source, tests, builds, release identity, and immutable release evidence. `games-site` owns arcade presentation, selected production version, routing, promotion, and rollback.
 
-GAME-293 has landed the static-web release contract and non-promoted Number Line Jumper routes, but production promotion/rollback evidence remains pending until a validated frozen candidate exists.
+GAME-293's static-web release contract and non-promoted Number Line Jumper routes are implemented. Prior promotion and rollback evidence applies to `main-12641c0` only. The current `main-0c87b2a` candidate has a recorded local build identity but is unpublished; its immutable asset, production route, and rollback evidence remain pending in the games-site repository.
