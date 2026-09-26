@@ -122,12 +122,30 @@
         },
         "hostedLinuxLighthouse": {
           "result": "passed",
-          "run": 36212649395,
-          "sourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
+          "run": 36264020094,
+          "url": "https://github.com/setnessconsulting/game-number-line-jumper/actions/runs/36264020094",
+          "workflowSourceSha": "cd227db52f81066bb29cff37bde600966db02fe1",
+          "releaseCandidateSourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
+          "releaseCandidateBuildTreeSha256": "4d71da7bfee648053e42c32b46575911396fe2f20a237b73690cbb4aada09fae",
+          "candidatePayloadMatches": true,
           "runs": 3,
+          "lcpMs": [1365.70, 1359.31, 1356.32],
+          "medianLcpMs": 1359.31,
+          "cls": [0, 0, 0],
+          "medianCls": 0,
           "thresholdAssertions": "passed",
-          "rawReportRetained": false,
-          "notes": "Hosted CI logs confirm all three Lighthouse runs completed and LHCI assertions passed. The workflow evidence artifact reported lighthouseLabReports=null because the hidden .lighthouseci directory was excluded from artifact upload. A follow-up workflow change now retains this hidden report directory; its hosted verification is pending."
+          "rawReportRetained": true,
+          "reportArtifact": "game-lighthouse-results-f7a269ccbbf754ac63e06aad585d18736fdc7ab2",
+          "reportSetSha256": "bfea1eb7ce468822192112070a552d24cc55782fc6ba84f69d9846adb0944a1b",
+          "priorRunWithoutRetainedReports": {
+            "run": 36212649395,
+            "sourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
+            "result": "passed",
+            "runs": 3,
+            "thresholdAssertions": "passed",
+            "rawReportRetained": false
+          },
+          "notes": "The follow-up Linux CI run retained all three raw reports and passed LHCI assertions. Its production build tree and each HTML, JavaScript, and CSS payload hash match the frozen main-0c87b2a candidate; the measured median LCP and CLS are within budget."
         },
         "buildReproducibility": {
           "sourceSha": "0c87b2abb0854ff99565ff4e16ce48ed1aa088d0",
@@ -165,6 +183,17 @@
       "hostedPreview": {
         "status": "blocked",
         "previewVersion": null,
+        "rollbackTargetVersion": "main-12641c0",
+        "requiredChecks": [
+          "Direct navigation and refresh",
+          "Mobile layout and interaction",
+          "Keyboard interaction",
+          "Reduced motion",
+          "Focus and browser history",
+          "Privacy and session payload",
+          "Asset response headers",
+          "Preview rollback to main-12641c0"
+        ],
         "productionPointerUnchanged": true,
         "blocker": "The cloudflare-business credential profile returned missing allowlisted credential before Wrangler could run; no R2 read/write or Pages deployment change was performed."
       },
@@ -260,9 +289,9 @@
   },
   "nextActions": [
     "Restore the allowlisted Cloudflare business credential profile before attempting R2 publication or a Pages preview deployment.",
-    "Keep main-0c87b2a unpublished until its exact immutable payload is qualified in games-site.",
-    "Complete owner device and screen-reader observations against the exact candidate.",
-    "Complete the GAME-409 human F1 feedback observation.",
-    "Update any Done statuses only after the required independent review; keep GAME-3 open while candidate and owner gates remain."
+    "Publish the exact main-0c87b2a hosted Linux payload as an immutable games-site asset and select it only through the branch preview override; verify every payload hash and all hostedPreview.requiredChecks while production continues to select main-12641c0.",
+    "Complete and record owner-observed desktop plus Android or iOS interaction, NVDA or VoiceOver validation, and the GAME-409 human F1 landing/feedback observation against that same preview candidate.",
+    "After evidence is complete, prepare a separate promotion review; keep production unchanged and leave Jira Done transitions behind independent review.",
+    "Keep GAME-3 open while candidate and owner gates remain."
   ]
 }
