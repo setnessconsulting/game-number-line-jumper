@@ -5,12 +5,14 @@
 /dist
 /dist-host
 /coverage
+/.lighthouseci
 /test-results
 /playwright-report
 /playwright-report-a11y
 /playwright-report-host
 /ci-evidence
 /release-evidence
+/performance-results
 *.tsbuildinfo
 
 # local environment and debug output

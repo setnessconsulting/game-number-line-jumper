@@ -213,6 +213,47 @@ test.describe("Number Line Jumper production accessibility", () => {
     await checkTargetSizes(page, "Guided warm-up");
   });
 
+  test("keeps wait-for-me feedback accessible and reflow-safe through Continue", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openJumper(page);
+    const waitForMe = page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" });
+    await expect(waitForMe).not.toBeChecked();
+    await waitForMe.check();
+    await checkA11y(page, "wait-for-me setup");
+    await checkTargetSizes(page, "wait-for-me setup");
+
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error("The accessibility project must define a viewport.");
+    await page.setViewportSize({ width: Math.floor(viewport.width / 2), height: viewport.height });
+    await page.getByRole("button", { name: /Grades 1/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+    const slider = page.getByRole("slider");
+    await slider.focus();
+    await page.keyboard.press("Enter");
+
+    const feedback = page.getByRole("status");
+    const continueButton = page.getByRole("button", { name: "Continue" });
+    await expect(feedback).toBeFocused();
+    await expect(continueButton).toBeVisible();
+    await checkA11y(page, "wait-for-me reveal and feedback");
+    await checkTargetSizes(page, "wait-for-me reveal and feedback");
+    await checkReflow(page, "wait-for-me reveal and feedback");
+
+    const revealMotion = await page.evaluate(() => ({
+      reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      markerAnimation: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).animationName,
+      markerTransform: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).transform,
+      targetAnimation: getComputedStyle(document.querySelector(".nl-truth-reveal")!).animationName,
+    }));
+    expect(revealMotion).toEqual({ reduced: true, markerAnimation: "none", markerTransform: "none", targetAnimation: "none" });
+
+    await continueButton.click();
+    await expect(page.getByRole("heading", { name: /Land on / })).toBeFocused();
+    await checkA11y(page, "wait-for-me after Continue");
+    await checkTargetSizes(page, "wait-for-me after Continue");
+    await checkReflow(page, "wait-for-me after Continue");
+  });
+
   test("covers Challenge, reveal, and a full keyboard-only round through summary", async ({ page }) => {
     await openJumper(page);
 
@@ -238,13 +279,16 @@ test.describe("Number Line Jumper production accessibility", () => {
 
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Enter");
+    // Assert the visual reveal immediately after the commit event. The game
+    // intentionally advances after its reveal dwell, so waiting for the
+    // feedback focus first can race the next-trial transition on mobile WebKit.
+    await expect(page.locator(".nl-marker-label")).toHaveText("Your estimate");
+    await expect(page.locator(".nl-truth-flag")).toBeVisible();
     const feedback = page.getByRole("status");
     await expect(feedback).toBeFocused();
     await expect(feedback).toContainText("Your estimate");
     await expect(feedback).toContainText("Target");
     await expect(feedback).toContainText("Try this next time");
-    await expect(page.locator(".nl-marker-label")).toHaveText("Your estimate");
-    await expect(page.locator(".nl-truth-flag")).toBeVisible();
     const nonColorMarkers = await page.evaluate(() => ({
       jumperShape: getComputedStyle(document.querySelector(".nl-jumper-token")!).borderRadius,
       truthShape: getComputedStyle(document.querySelector(".nl-truth-flag")!).borderRadius,
@@ -314,12 +358,14 @@ test.describe("Number Line Jumper production accessibility", () => {
     const revealMotion = await page.evaluate(() => ({
       reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
       markerAnimation: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).animationName,
+      markerTransform: getComputedStyle(document.querySelector(".nl-marker-reveal .nl-jumper-token")!).transform,
       targetAnimation: getComputedStyle(document.querySelector(".nl-truth-reveal")!).animationName,
       trackTransition: getComputedStyle(document.querySelector(".nl-track")!).transitionDuration,
     }));
     expect(revealMotion).toMatchObject({
       reduced: true,
       markerAnimation: "none",
+      markerTransform: "none",
       targetAnimation: "none",
       trackTransition: "0s",
     });

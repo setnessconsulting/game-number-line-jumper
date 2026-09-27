@@ -6,6 +6,13 @@ async function openJumper(page: Page) {
   await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
 }
 
+async function setVisibility(page: Page, state: "visible" | "hidden") {
+  await page.evaluate((nextState) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: nextState });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+}
+
 test.describe("Number Line Jumper browser flow", () => {
   test("starts every placement band and keeps the round playable", async ({ page }) => {
     for (const label of [/Grades 1/, /Grades 3/, /Grades 5/, /Grades 7/]) {
@@ -18,6 +25,65 @@ test.describe("Number Line Jumper browser flow", () => {
       await page.getByRole("button", { name: "Exit" }).click();
       await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
     }
+  });
+
+  test("anchors Explore tick labels to their ticks and moves the marker with transform", async ({ page }) => {
+    await openJumper(page);
+    await page.getByRole("button", { name: "Explore an untimed line" }).click();
+
+    const alignment = await page.locator(".nl-tick-row").evaluate((row) => {
+      const labels = [...row.querySelectorAll<HTMLElement>(".nl-tick-label")];
+      const track = row.parentElement?.querySelector(".nl-track-explore");
+      const ticks = track ? [...track.querySelectorAll<HTMLElement>(".nl-zoom-tick")] : [];
+      return {
+        labels: labels.map((label) => {
+          const rect = label.getBoundingClientRect();
+          return { center: rect.left + rect.width / 2, text: label.textContent };
+        }),
+        ticks: ticks.map((tick) => {
+          const rect = tick.getBoundingClientRect();
+          return { center: rect.left + rect.width / 2 };
+        }),
+      };
+    });
+
+    expect(alignment.labels.length).toBeGreaterThan(1);
+    expect(alignment.labels).toHaveLength(alignment.ticks.length);
+    alignment.labels.forEach((label, index) => {
+      expect(Math.abs(label.center - alignment.ticks[index]!.center), `tick label ${label.text}`).toBeLessThanOrEqual(2);
+    });
+
+    const marker = page.locator(".nl-track-explore .nl-marker");
+    const motion = await marker.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { left: style.left, transform: style.transform, transitionProperty: style.transitionProperty };
+    });
+    expect(motion.left).toBe("12px");
+    expect(motion.transform).not.toBe("none");
+    expect(motion.transitionProperty.split(",")).toContain("transform");
+    expect(motion.transitionProperty).not.toContain("left");
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const reducedMotion = await marker.evaluate((element) => getComputedStyle(element).transitionProperty);
+    expect(reducedMotion).not.toContain("transform");
+
+    const slider = page.getByRole("slider", { name: /Explore number line/ });
+    const markerDistanceFromRailEnd = () => marker.evaluate((element) => {
+      const track = element.parentElement;
+      const token = element.querySelector<HTMLElement>(".nl-jumper-token");
+      const rail = track?.querySelector<HTMLElement>(".nl-rail");
+      if (!track || !token || !rail) return Number.POSITIVE_INFINITY;
+      const tokenRect = token.getBoundingClientRect();
+      const railRect = rail.getBoundingClientRect();
+      const markerCenter = tokenRect.left + tokenRect.width / 2;
+      const expectedCenter = track.getAttribute("aria-valuenow") === "0" ? railRect.left : railRect.right;
+      return Math.abs(markerCenter - expectedCenter);
+    });
+
+    await slider.press("Home");
+    await expect.poll(markerDistanceFromRailEnd).toBeLessThanOrEqual(2);
+    await slider.press("End");
+    await expect.poll(markerDistanceFromRailEnd).toBeLessThanOrEqual(2);
   });
 
   test("supports keyboard placement, midpoint scaffolding, feedback, and clean exit", async ({ page }) => {
@@ -46,6 +112,111 @@ test.describe("Number Line Jumper browser flow", () => {
     await page.getByRole("button", { name: "Exit" }).click();
     await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
+  });
+
+  test("holds feedback for the learner and advances with Continue in every input mode", async ({ page }, testInfo) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+    await openJumper(page);
+
+    const waitForMe = page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" });
+    await expect(waitForMe).not.toBeChecked();
+    await waitForMe.check();
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+    await expect(page.getByText("Trial 1 of 10 · place the jumper, then press Land")).toBeVisible();
+
+    const slider = page.getByRole("slider");
+    await slider.press("Enter");
+    const feedback = page.getByRole("status");
+    const continueButton = page.getByRole("button", { name: "Continue" });
+    await expect(feedback).toBeFocused();
+    await expect(continueButton).toBeVisible();
+    await page.clock.fastForward(2_000);
+    await expect(continueButton).toBeVisible();
+    await expect(page.getByText("Trial 1 of 10 · place the jumper, then press Land")).toBeVisible();
+    await expect(slider).toHaveAttribute("aria-disabled", "true");
+
+    await continueButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Trial 2 of 10 · place the jumper, then press Land")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Land on / })).toBeFocused();
+
+    await slider.press("Enter");
+    await expect(continueButton).toBeVisible();
+    await continueButton.focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByText("Trial 3 of 10 · place the jumper, then press Land")).toBeVisible();
+
+    await page.getByRole("button", { name: "Land here" }).click();
+    await expect(continueButton).toBeVisible();
+    if (testInfo.project.name === "mobile-webkit") await continueButton.tap();
+    else await continueButton.click();
+    await expect(page.getByText("Trial 4 of 10 · place the jumper, then press Land")).toBeVisible();
+
+    await page.getByRole("button", { name: "Exit" }).click();
+    await expect(waitForMe).not.toBeChecked();
+    expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookies: document.cookie.length }))).toEqual({
+      local: 0,
+      session: 0,
+      cookies: 0,
+    });
+    await page.reload();
+    await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" })).not.toBeChecked();
+  });
+
+  test("emits continuous reveal intensity and motion styles from placement error", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+    await openJumper(page);
+    await page.getByRole("checkbox", { name: "Wait for me after feedback (this session)" }).check();
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+
+    const slider = page.getByRole("slider");
+    const samples: Array<{ intensity: string; scale: string; glow: string; truthIntensity: string }> = [];
+    for (const placement of ["Home", "ArrowRight", "End", "ArrowLeft"] as const) {
+      await slider.press(placement);
+      await page.getByRole("button", { name: "Land here" }).click();
+      const sample = await page.locator(".nl-marker-reveal").evaluate((marker) => {
+        const token = marker.querySelector<HTMLElement>(".nl-jumper-token");
+        if (!token) throw new Error("Reveal token was not rendered");
+        const truth = document.querySelector<HTMLElement>(".nl-truth-reveal");
+        if (!truth) throw new Error("Reveal target was not rendered");
+        return {
+          intensity: marker.style.getPropertyValue("--nl-reveal-intensity"),
+          scale: marker.style.getPropertyValue("--nl-reveal-scale"),
+          glow: marker.style.getPropertyValue("--nl-reveal-glow"),
+          truthIntensity: truth.style.getPropertyValue("--nl-reveal-intensity"),
+        };
+      });
+      samples.push(sample);
+
+      if (new Set(samples.map(({ intensity }) => intensity)).size > 1) break;
+      await page.getByRole("button", { name: "Continue" }).click();
+    }
+
+    expect(new Set(samples.map(({ intensity }) => intensity)).size).toBeGreaterThan(1);
+    expect(new Set(samples.map(({ scale }) => scale)).size).toBeGreaterThan(1);
+    expect(new Set(samples.map(({ glow }) => glow)).size).toBeGreaterThan(1);
+    expect(samples.every(({ intensity, truthIntensity }) => intensity === truthIntensity)).toBe(true);
+  });
+
+  test("pauses the free round clock while hidden and resumes the remaining time", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+    await openJumper(page);
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+
+    await expect(page.locator(".timer")).toHaveText("60s left");
+    await setVisibility(page, "hidden");
+    await expect(page.getByTestId("clock-status")).toHaveText("Round clock paused while this tab is hidden.");
+    await page.clock.fastForward(10_000);
+    await expect(page.locator(".timer")).toHaveText("60s left");
+
+    await setVisibility(page, "visible");
+    await expect(page.getByTestId("clock-status")).toHaveText("Round clock resumed.");
+    await page.clock.fastForward(60_000);
+    await expect(page.getByText(/Round complete/)).toBeVisible();
   });
 
   test("keeps the number line inside a mobile viewport", async ({ page }, testInfo) => {
@@ -135,7 +306,12 @@ test.describe("Number Line Jumper browser flow", () => {
     expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
   });
 
-  test("surfaces session-only visit bests with record callouts and reload reset", async ({ page }) => {
+  test("surfaces visit and tab-session bests while only visit records reset", async ({ page }) => {
+    // Keep the comparison between the two intentionally different placement
+    // strategies deterministic; runtime gameplay remains time-seeded.
+    await page.addInitScript(() => {
+      Object.defineProperty(Date, "now", { configurable: true, value: () => 291 });
+    });
     // Round 1 parks every estimate at the far-left endpoint; round 2 lands
     // every estimate on the midpoint (the slider's resting position), which
     // is systematically closer for this band's target distribution and so
@@ -169,19 +345,22 @@ test.describe("Number Line Jumper browser flow", () => {
     await landTenTrials(null);
     await expect(page.getByText(/New best (average error|close streak) this visit/).first()).toBeVisible();
 
-    // Visit bests are page-session memory only: nothing is written to storage.
+    // The visit records are memory-only; the separate tab-session records are
+    // the only storage entry and carry no cookies or cross-site state.
     const storage = await page.evaluate(() => ({
       local: localStorage.length,
       session: sessionStorage.length,
       cookies: document.cookie.length,
     }));
     expect(storage.local).toBe(0);
-    expect(storage.session).toBe(0);
+    expect(storage.session).toBe(1);
     expect(storage.cookies).toBe(0);
 
-    // Reloading the page starts a fresh visit with no previous records.
+    // Reloading starts a fresh page visit while the browser-tab session record
+    // remains available in the setup card.
     await page.reload();
     await expect(page.getByText(/Number Line Jumper · pick your level/)).toBeVisible();
+    await expect(page.getByTestId("session-records")).toContainText(/Session best:/);
     await page.getByRole("button", { name: /Grades 1/ }).click();
     await page.getByRole("button", { name: "Start guided round" }).click();
     await expect(page.getByRole("slider")).toBeVisible();
@@ -189,8 +368,30 @@ test.describe("Number Line Jumper browser flow", () => {
     await page.getByRole("button", { name: "Land here" }).click();
     await expect(page.getByRole("status")).toContainText("Your estimate");
     await expect(page.getByRole("button", { name: "Land here" })).toBeVisible();
-    // Fresh visit: no "Best this visit —" line exists yet in this session.
+    // Fresh visit: no "Best this visit —" line exists yet in this round.
     await expect(page.getByText(/Best this visit —/)).toHaveCount(0);
+  });
+
+  test("offers a schema-validated interrupted round after reload", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Date, "now", { configurable: true, value: () => 712 });
+    });
+    await openJumper(page);
+    await page.getByRole("button", { name: /Grades 3/ }).click();
+    await page.getByRole("button", { name: "Start guided round" }).click();
+    const slider = page.getByRole("slider");
+    await slider.press("ArrowRight");
+    await expect(page.getByRole("button", { name: "Land here" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByTestId("session-records")).toContainText("unfinished guided round");
+    await page.getByRole("button", { name: "Resume saved round" }).click();
+    await expect(page.getByText(/Number Line Jumper · Score/)).toBeVisible();
+    await expect(page.getByText(/Trial 1 of 10/)).toBeVisible();
+    await expect(page.getByRole("slider")).toHaveAttribute("aria-valuenow", "52");
+
+    await page.getByRole("button", { name: "Exit" }).click();
+    expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
   });
 });
 

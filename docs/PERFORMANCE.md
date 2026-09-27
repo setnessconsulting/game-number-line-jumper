@@ -1,30 +1,31 @@
-# Number Line Jumper performance qualification
+# GAME-219 performance qualification
 
-GAME-219 measures responsiveness on the production build without adding production telemetry.
+This note records the performance budgets and the evidence available for the standalone Number Line Jumper build. Lab checks are not field Core Web Vitals, and browser emulation is not a substitute for owner-observed physical-device testing.
 
-## Metrics
+## Budgets and measurement boundaries
 
-- **Pointermove-to-next-frame** is an input-to-frame/presentation proxy measured by Playwright. It is not browser-native Event Timing duration; continuous pointermove events are excluded from Event Timing.
-- Typical Chromium target: p95 <= 16 ms over roughly 200 moves.
-- Chromium under 6x CPU throttling target: p95 <= 50 ms.
-- **Reveal transition** excludes the intentional 900/1100/1400/1700 ms coaching dwell. The metric begins when that scheduled dwell callback fires and ends at the first frame where the next scored placement accepts input. Target: p95 <= 200 ms over a ten-trial round.
-- A PerformanceObserver records long tasks during drag and zoom. No observed long task may exceed 50 ms.
-- Lighthouse CI records mobile **lab** LCP (<=2.5 s) and CLS (<=0.1). These are not field percentiles.
-- Field INP is only accepted from eligible CrUX real-user data for the promoted public route. Until GAME-293 promotes such a route with sufficient CrUX coverage, INP is **UNKNOWN/PENDING**.
+| Area | Budget | Evidence |
+| --- | --- | --- |
+| Local production-build Lighthouse, mobile simulated | Median LCP ≤ 2,500 ms; median CLS ≤ 0.1 across three runs | Lighthouse CI reads `dist/` and writes a local `.lighthouseci/` report. Hosted Linux CI attaches the report to the tested commit. |
+| Drag responsiveness, typical Chromium | p95 input-to-next-frame proxy ≤ 16 ms | 200 dispatched pointer moves; the harness records the event timestamp, marker inline-transform update, and following `requestAnimationFrame` callback. |
+| Drag responsiveness, 6× CPU-throttled Chromium | p95 input-to-next-frame proxy ≤ 50 ms | Same 200-event trace with CDP CPU throttling. |
+| Drag and Explore zoom long tasks | No observed task longer than 50 ms | `PerformanceObserver` long-task entries during the bounded interaction window. |
+| Reveal transition | p95 ≤ 200 ms after the intentional game dwell | Nine measured transitions over ten trials; the final trial completes the round. Intentional feedback dwell is excluded. |
+| Learner JavaScript gzip size | Record the absolute and percentage change against the pinned baseline | Vite production-build output; only the learner production bundle is counted, not development tooling. |
 
-## Bundle baseline
+The pointer metric is a custom input-to-frame proxy, not browser paint presentation timing. It is intentionally not labeled Event Timing INP: the [W3C Event Timing specification](https://w3c.github.io/event-timing/) excludes continuous events such as `pointermove` from its event entries. The tests preserve the dispatched event timestamp and report both the style-update and next-frame samples so the proxy is auditable.
 
-The pinned comparison is `9b5f418f10503e4fb2d592756f9fb19c22c12dc5`, whose CI production artifact measured:
+## Evidence produced by the gates
 
-- learner JavaScript raw: 245,811 bytes
-- learner JavaScript gzip level 9: 74,652 bytes
+- `npm run check:bundle-budget` compares the learner JavaScript assets against the pinned `performance/baseline.json` SHA and writes `performance-results/bundle-budget.json`, including raw/gzip bytes and absolute/percentage deltas.
+- `npm run test:e2e:run` runs the functional matrix in desktop Chromium, desktop Firefox, and mobile WebKit. `tests/e2e/numberLineJumperPerformance.spec.ts` emits pointer-frame, long-task, and reveal-transition JSON attachments tied to the Playwright test result.
+- `npm run perf:lighthouse` runs three mobile Lighthouse CI lab measurements against the static production build and writes `.lighthouseci/`. Hosted CI supplies Chrome's `--no-sandbox` flags because its isolated runner does not expose a usable setuid sandbox. On this Windows workstation the current local launch fails with Chrome Launcher `spawn UNKNOWN` before an audit; native Windows can also hit temporary-profile cleanup `EPERM`. The hosted Linux browser job is authoritative for LCP and CLS and for Firefox execution.
+- The CI evidence manifest records the exact source/workflow SHA, lockfile digest, browser versions, production build digest, bundle-budget report, Lighthouse report digest, and gate results. It explicitly leaves field INP as `UNKNOWN/PENDING` until an eligible public CrUX sample exists; no runtime telemetry is allowed.
 
-`npm run perf:bundle` reports absolute and percentage gzip delta against that pinned baseline and fails on a material unexplained increase. The existing learner-bundle gate separately rejects Phaser, Pixi, Unity/WebGL runtimes, Sentry/browser observability SDKs, and sibling-only runtimes.
+The local Lighthouse budget is configured in `lighthouserc.cjs`. Lighthouse CI uses a static production build and filesystem-only report output, following the [Lighthouse CI configuration](https://github.com/GoogleChrome/lighthouse-ci/blob/main/docs/configuration.md); it does not upload to a Lighthouse server or collect learner telemetry. The hosted Linux workflow is the authoritative CI result when a Windows workstation cannot launch the pinned Firefox or Chrome binary.
 
-## Cross-browser and evidence
+Field INP remains **unknown / pending**. There is no promoted public playable route with an eligible CrUX sample, and the game deliberately has no field telemetry. CrUX eligibility and the field-data boundary are described in the [CrUX API documentation](https://developer.chrome.com/docs/crux/guides/crux-api). Do not substitute lab results for field INP.
 
-The bounded CI qualification runs the normal Chromium/mobile-WebKit suite plus a GAME-219 performance lane containing Chromium performance measurements and Firefox smoke qualification. Artifacts are tied to the exact workflow SHA.
+## Acceptance boundary
 
-A real iOS or Android interaction pass remains owner-observed evidence. Automation must not claim that gate passed.
-
-No runtime performance beacon, remote SDK, or learner-session telemetry is introduced.
+Playwright WebKit and mobile emulation do not establish physical-device behavior. The owner-observed Android Chrome and Windows Chrome preview pass is recorded on GAME-219 separately from this repository's CI evidence. No deployment or publication is part of GAME-219.

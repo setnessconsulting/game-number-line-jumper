@@ -1,6 +1,6 @@
 /** Optional, quiet, session-only sound cues for Number Line Jumper. */
 
-import { CLOSE_THRESHOLD, EXACT_THRESHOLD } from "@/lib/numberLineJumper/engine";
+import { closenessFromError } from "@/lib/numberLineJumper/engine";
 
 export type SoundCue = "start" | "exact" | "close" | "far" | "finish";
 
@@ -19,12 +19,12 @@ export const CUE_NOTES: Record<SoundCue, readonly number[]> = {
 /**
  * Deterministic, monotonic pitch mapping from the product's established
  * relative-error tiers (≤5% exact, ≤15% close, otherwise far) to a cue.
- * Closer answers get the higher, clearer closeness pitch.
+ * Closer answers get the higher, clearer closeness pitch. The tier itself
+ * comes from the engine's single classifier so the cue always agrees with
+ * the closeness shown on screen, including at threshold boundaries.
  */
 export function soundCueForError(error: number): SoundCue {
-  if (error <= EXACT_THRESHOLD) return "exact";
-  if (error <= CLOSE_THRESHOLD) return "close";
-  return "far";
+  return closenessFromError(error);
 }
 
 function getContext(): AudioContext | null {

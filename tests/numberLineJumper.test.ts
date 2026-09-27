@@ -340,6 +340,81 @@ describe("scorePlacement", () => {
     expect(s.points).toBe(10);
   });
 
+  it.each([
+    { value: 173, anchors: "100 and 200" },
+    { value: 514, anchors: "500 and 600" },
+    { value: 500, anchors: "400 and 600" },
+  ])("gives concrete nearby anchors for a large whole target at $value", ({ value, anchors }) => {
+    const target: Target = {
+      value,
+      display: String(value),
+      kind: "whole",
+      range: { min: 0, max: 1000 },
+    };
+
+    const nextStep = scorePlacement(normOnRange(value, 0, 1000), target).nextStep;
+
+    expect(nextStep).toContain(anchors);
+    expect(nextStep).toContain("estimate between them");
+    expect(nextStep).not.toContain("next hundred or thousand");
+    expect(nextStep).not.toContain(String(value));
+  });
+
+  it("keeps representation-specific coaching for fractions and decimals", () => {
+    const fraction: Target = {
+      value: 1.4,
+      display: "1 2/5",
+      kind: "fraction",
+      range: { min: 0, max: 2 },
+    };
+    const decimal: Target = {
+      value: 514.2,
+      display: "514.2",
+      kind: "decimal",
+      range: { min: 0, max: 1000 },
+    };
+
+    expect(scorePlacement(normOnRange(fraction.value, 0, 2), fraction).nextStep).toContain("denominator parts");
+    expect(scorePlacement(normOnRange(decimal.value, 0, 1000), decimal).nextStep).toContain("use tenths or hundredths");
+  });
+
+  it("uses the target's actual side of zero after either a low or high estimate", () => {
+    const negative: Target = {
+      value: -4,
+      display: "−4",
+      kind: "negative",
+      range: { min: -10, max: 10 },
+    };
+    const positive: Target = {
+      value: 4,
+      display: "4",
+      kind: "whole",
+      range: { min: -10, max: 10 },
+    };
+
+    const negativeOvershoot = scorePlacement(normOnRange(-2, -10, 10), negative);
+    const positiveUndershoot = scorePlacement(normOnRange(2, -10, 10), positive);
+
+    expect(negativeOvershoot.direction).toBe("high");
+    expect(negativeOvershoot.nextStep).toContain("negative-side marks");
+    expect(negativeOvershoot.nextStep).not.toContain("positive-side");
+    expect(positiveUndershoot.direction).toBe("low");
+    expect(positiveUndershoot.nextStep).toContain("positive-side marks");
+    expect(positiveUndershoot.nextStep).not.toContain("negative-side");
+  });
+
+  it("keeps concrete anchors when a mixed Challenge round emits a whole target", () => {
+    const mixedTarget: Target = {
+      value: 514,
+      display: "514",
+      kind: "whole",
+      intent: "mixed",
+      range: { min: 0, max: 1000 },
+    };
+
+    expect(scorePlacement(normOnRange(514, 0, 1000), mixedTarget).nextStep).toContain("500 and 600");
+  });
+
   it("works with negative ranges", () => {
     const t: Target = {
       value: -4,

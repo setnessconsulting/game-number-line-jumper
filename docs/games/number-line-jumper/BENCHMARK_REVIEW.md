@@ -1,17 +1,21 @@
 # Number Line Jumper — Benchmark Review
 
-This file is the active package-level benchmark summary. GAME-222 owns the detailed remediation ledger and remains open; this document therefore records comparator intent and evidence labels without inventing scorecard results.
+This file is the concise package-level benchmark index. The detailed
+GAME-222 ledger is checked in at
+[`../../NUMBER_LINE_JUMPER_QUALITY_REVIEW.md`](../../NUMBER_LINE_JUMPER_QUALITY_REVIEW.md),
+and the comparator definitions live in
+[`COMPARISON_APPENDIX.md`](COMPARISON_APPENDIX.md).
 
 ## Comparator registry
 
 | Comparator | Use | Current evidence label |
 | --- | --- | --- |
 | Pearl Diver | Evaluated for number-line magnification; not adopted as a scored requirement because it conflicts with the locked sparse-line model. A future unscored Explore affordance requires separate approval. | described-mechanic-only unless a current verified route/evidence is attached in GAME-222 |
-| Motion Math Zoom | Zoom and scale-comprehension comparator for Explore/multi-scale behavior. | described-mechanic-only pending GAME-222 verification |
-| Battleship Numberline | Number-line estimation/placement comparison. | evidence status must be established in GAME-222 |
-| Number Line Drop | Prior comparison-set member. | evidence status must be established in GAME-222 |
-| Estimate It | Prior comparison-set member. | evidence status must be established in GAME-222 |
-| Toy Theater | Prior comparison-set member. | evidence status must be established in GAME-222 |
+| Motion Math Zoom | Zoom and scale-comprehension comparator for Explore/multi-scale behavior. | described-mechanic-only; bar and disposition are in the comparison appendix |
+| Battleship Numberline | Number-line estimation/placement comparison. | described-mechanic-only; no external quality claim |
+| Number Line Drop | Direct number-line placement comparison. | described-mechanic-only; no external quality claim |
+| Estimate It | Estimation and feedback comparison. | described-mechanic-only; no external quality claim |
+| Toy Theater | Early number-line representation comparison. | described-mechanic-only; no external quality claim |
 
 ## Locked product dispositions
 
@@ -22,9 +26,12 @@ This file is the active package-level benchmark summary. GAME-222 owns the detai
 
 ## Evidence rules
 
-Every GAME-222 comparator must ultimately be labeled `verified-here` or `described-mechanic-only`. No Meets/Exceeds claim may rest on an unverified route.
+Every GAME-222 comparator is labeled `verified-here` or
+`described-mechanic-only`. No Meets/Exceeds claim rests on an unverified route.
 
-The required fifteen-dimension Below/Meets/Exceeds ledger is **not yet complete** and is owned by GAME-222. Until that checked-in ledger exists, this package makes no aggregate quality-ranking claim.
+The required fifteen-dimension Below/Meets/Exceeds ledger is now checked in.
+It contains one intentional Below row with an explicit Figma-authority
+disposition and makes no aggregate external quality-ranking claim.
 
 ## Relationship to old docs
 

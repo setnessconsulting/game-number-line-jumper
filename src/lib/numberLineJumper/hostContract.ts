@@ -1,6 +1,6 @@
 import type { SessionAggregates } from "./aggregates";
 import { isPlacementBand, mapPlacementResultToBand } from "./placementAdapter";
-import type { PlacementResultSignalV1 } from "./placementAdapter";
+import type { PlacementResultInputV1 } from "./placementAdapter";
 import type { PlacementBand, RoundMode, RoundSummary } from "./types";
 
 export const HOST_CONTRACT_VERSION = 1 as const;
@@ -95,7 +95,7 @@ export interface NumberLineJumperHostV1 {
   mode: HostModeV1;
   autoStart?: boolean;
   initialBand?: PlacementBand;
-  placementResult?: PlacementResultSignalV1;
+  placementResult?: PlacementResultInputV1;
   timeLimit?: HostTimeLimitV1;
   sessionContext?: HostSessionContextV1;
   callbacks?: NumberLineJumperHostCallbacksV1;

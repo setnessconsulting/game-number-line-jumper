@@ -15,7 +15,7 @@ const browserManifest = existsSync(browserManifestPath)
   ? JSON.parse(readFileSync(browserManifestPath, "utf8"))
   : null;
 const requiredBrowsers = browserManifest?.browsers
-  ?.filter(({ name }) => name === "chromium" || name === "webkit" || name === "firefox")
+  ?.filter(({ name }) => name === "chromium" || name === "firefox" || name === "webkit")
   .map(({ name, revision, browserVersion, title }) => ({ name, revision, browserVersion, title })) ?? null;
 
 function status(name) {
@@ -62,29 +62,17 @@ const checks = {
   hostHarnessBuild: status("GATE_HOST_BUILD"),
   ipSeparation: status("GATE_IP"),
   learnerBundle: status("GATE_BUNDLE"),
+  learnerBundleBudget: status("GATE_BUNDLE_BUDGET"),
+  lighthouseLab: status("BROWSER_LHCI"),
   browserJourneys: status("BROWSER_E2E"),
   accessibility: status("BROWSER_A11Y"),
   hostLifecycle: status("BROWSER_HOST"),
-  performanceBrowser: status("PERFORMANCE_BROWSER"),
-  performanceBundleBudget: status("PERFORMANCE_BUNDLE"),
-  lighthouseLab: status("PERFORMANCE_LIGHTHOUSE"),
 };
 const browserJobStatus = process.env.BROWSER_JOB_RESULT ?? "not-run";
-const browserSuitesStarted = Boolean(process.env.BROWSER_E2E || process.env.BROWSER_A11Y || process.env.BROWSER_HOST);
+const browserSuitesStarted = Boolean(process.env.BROWSER_LHCI || process.env.BROWSER_E2E || process.env.BROWSER_A11Y || process.env.BROWSER_HOST);
 const codeChanged = process.env.GAME_CODE_CHANGED === "true";
 const fullBrowserQualification = browserJobStatus === "success";
 const verificationPassed = process.env.VERIFY_JOB_RESULT === "success";
-const performanceJobStatus = process.env.PERFORMANCE_JOB_RESULT ?? "not-run";
-
-function readJsonIfPresent(path) {
-  const fullPath = join(repositoryRoot, path);
-  return existsSync(fullPath) ? JSON.parse(readFileSync(fullPath, "utf8")) : null;
-}
-
-const inputFrame = readJsonIfPresent("performance-results/input-frame.json");
-const revealTransition = readJsonIfPresent("performance-results/reveal-transition.json");
-const longTasks = readJsonIfPresent("performance-results/long-tasks.json");
-const bundleBudget = readJsonIfPresent("performance-results/bundle-budget.json");
 
 const manifest = {
   schemaVersion: 1,
@@ -99,7 +87,6 @@ const manifest = {
     url: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
     verificationArtifact: verificationPassed ? `game-verification-${workflowSha}` : null,
     browserArtifact: browserSuitesStarted ? `game-browser-results-${workflowSha}` : null,
-    performanceArtifact: performanceJobStatus === "success" ? `game-performance-results-${workflowSha}` : null,
   },
   toolchain: {
     node: process.version,
@@ -111,6 +98,8 @@ const manifest = {
   },
   packageLockSha256: createHash("sha256").update(packageLock).digest("hex"),
   productionBuild: treeDigest("dist"),
+  learnerBundleBudgetReport: treeDigest("performance-results"),
+  lighthouseLabReports: treeDigest(".lighthouseci"),
   coverage: coverage
     ? {
         linesPercent: coverage.lines?.pct ?? null,
@@ -122,21 +111,8 @@ const manifest = {
     changeClassification: process.env.CHANGE_JOB_RESULT ?? "not-run",
     verification: process.env.VERIFY_JOB_RESULT ?? "not-run",
     browser: browserJobStatus,
-    performance: performanceJobStatus,
   },
   checks,
-  performanceQualification: {
-    status: performanceJobStatus === "success" ? "passed" : performanceJobStatus,
-    inputFrame,
-    revealTransition,
-    longTasks,
-    bundleBudget,
-    fieldInp: bundleBudget?.crux ?? {
-      status: "UNKNOWN/PENDING",
-      reason: "No eligible CrUX result was attached to this run.",
-    },
-    metricNote: "pointermove-to-next-frame is an input-to-frame presentation proxy, not Event Timing pointermove duration",
-  },
   browserQualification: {
     status: fullBrowserQualification
       ? "passed"
@@ -145,19 +121,23 @@ const manifest = {
         : browserJobStatus === "skipped" && !codeChanged
           ? "skipped-docs-only"
           : "incomplete",
-    projects: ["chromium", "mobile-webkit", "firefox-smoke"],
+    projects: ["chromium", "firefox", "mobile-webkit"],
     manualWorkflowDispatchRunsFullMatrix: true,
+  },
+  fieldINP: {
+    status: "unknown-pending",
+    reason: "The candidate is not promoted to a public playable route; CrUX data requires eligible real-user field samples.",
   },
   verificationStage: !verificationPassed
     ? "failed-or-incomplete"
     : fullBrowserQualification
-      ? "full-browser-and-accessibility"
+      ? "full-browser-accessibility-and-lab-performance"
       : browserJobStatus === "failure"
         ? "static-and-unit-passed-browser-failed"
         : browserJobStatus === "cancelled"
           ? "browser-qualification-cancelled"
           : "static-and-unit-only",
-  note: "This artifact records bounded automated evidence for this CI run only. GAME-219 still requires the owner-observed real iOS/Android pass before Done; final release, owner, host-deployment, and publication gates are separate.",
+  note: "This artifact records this CI run only; it is not final release acceptance and does not imply owner-observed device, public CrUX field-INP, host-deployment, or publication gates are complete.",
 };
 
 const outputDirectory = join(repositoryRoot, "ci-evidence");

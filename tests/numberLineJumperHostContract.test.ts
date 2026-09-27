@@ -38,6 +38,44 @@ describe("GAME-292 versioned host contract", () => {
     expect(mapPlacementResultToBand({ status: "complete", level: "3" })).toBeNull();
   });
 
+  it("maps every canonical grade-third-v1 band through golden fixtures", () => {
+    const fixtures = [
+      [1, "early", "g12"], [2, "mid", "g12"],
+      [3, "late", "g34"], [4, "early", "g34"],
+      [5, "mid", "g56"], [6, "late", "g56"],
+      [7, "early", "g78"], [8, "mid", "g78"],
+    ] as const;
+
+    for (const [grade, third, expected] of fixtures) {
+      expect(mapPlacementResultToBand({
+        kind: "band",
+        band: { grade, third },
+        levelParam: `${grade}-${third}`,
+      })).toBe(expected);
+    }
+  });
+
+  it("fails closed for edge, malformed, and inconsistent grade-third results", () => {
+    expect(mapPlacementResultToBand({ kind: "below", band: null, levelParam: null })).toBeNull();
+    expect(mapPlacementResultToBand({ kind: "above", band: null, levelParam: null })).toBeNull();
+    expect(mapPlacementResultToBand({
+      kind: "band",
+      band: { grade: 5, third: "mid" },
+      levelParam: "5-late",
+    })).toBeNull();
+    expect(mapPlacementResultToBand({
+      kind: "band",
+      band: { grade: 9, third: "mid" },
+      levelParam: "9-mid",
+    })).toBeNull();
+    expect(mapPlacementResultToBand({
+      kind: "band",
+      band: { grade: 5, third: "mid" },
+      levelParam: null,
+    })).toBeNull();
+    expect(mapPlacementResultToBand({ kind: "band", band: null, levelParam: null })).toBeNull();
+  });
+
   it("keeps explicit host choices authoritative and reports malformed optional values", () => {
     const resolved = resolveHostContractV1({
       version: HOST_CONTRACT_VERSION,
@@ -119,6 +157,18 @@ describe("GAME-292 versioned host contract", () => {
     expect(invalid).toMatchObject({ mode: "free", autoStart: false, initialBand: null });
     expect(invalid.errors.map(({ code }) => code)).toContain("INVALID_PLACEMENT_RESULT");
     expect(invalid.errors.map(({ code }) => code)).toContain("AUTO_START_REQUIRES_BAND");
+
+    const canonical = resolveHostContractV1({
+      version: HOST_CONTRACT_VERSION,
+      mode: "free",
+      autoStart: true,
+      placementResult: {
+        kind: "band",
+        band: { grade: 7, third: "late" },
+        levelParam: "7-late",
+      },
+    });
+    expect(canonical).toMatchObject({ mode: "free", autoStart: true, initialBand: "g78" });
   });
 
   it("requires a valid deadline for bounded-break mode and resolves both deadline forms", () => {

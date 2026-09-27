@@ -7,7 +7,8 @@ The standalone game owns its gameplay state, number-line math, scoring, and emit
 - Launch configuration is resolved once when the game mounts; remount with a new host object to start a new host session. Callback functions may be refreshed by the host while mounted.
 - Omit the optional `host` prop for the existing standalone free-play experience.
 - `version` must be `1`; an unsupported or malformed contract reports a fatal, JSON-safe error when an error callback is available, then falls back to free play.
-- `initialBand` takes precedence over a complete placement level. Complete levels map as 1–2 → `g12`, 3–4 → `g34`, 5–6 → `g56`, and 7–8 → `g78`. The adapter does not change target generation or scoring.
+- `initialBand` takes precedence over a complete placement result. The original shorthand `{ status: "complete", level }` remains supported. The canonical `grade-third-v1` result is accepted without importing LevelBest: `{ kind: "band", band: { grade, third }, levelParam: "<grade>-<third>" }`.
+- Canonical placement requires `kind: "band"`, an integer grade from 1 through 8, one of `early | mid | late`, and a matching `levelParam`. Grade routing is explicit: 1–2 → `g12`, 3–4 → `g34`, 5–6 → `g56`, and 7–8 → `g78`. `below`, `above`, missing, malformed, and internally inconsistent results never use a nearest fallback; they leave manual level selection available.
 - Invalid/missing placement, band, or `autoStart` inputs report recoverable errors and leave manual level selection available.
 - `mode: "break"` requires a valid relative remaining-time budget or absolute epoch deadline and an `onReturnToPractice` callback. Without either, the game reports a recoverable error and falls back to free/manual play; it never silently creates an unbounded break or a break with no host return path.
 - A bounded break emits `onReturnToPractice` at expiry. The game does not close a window, navigate, or unmount itself; the host decides how to return its outer experience. Unmount cleanup cancels the deadline timer.
@@ -54,7 +55,7 @@ function LocalLessonHost() {
 }
 ```
 
-Run the local parent harness at `/examples/host-harness.html` through `npm run test:e2e`; its short deadline and visible event log exercise auto-start, expiry, aggregate delivery, and host-owned unmounting. It uses no production credentials or private host interfaces. The E2E-only build mode includes this page; the normal release build excludes it.
+Run the local parent harness at `/examples/host-harness.html` through `npm run test:e2e`; its short deadline and visible event log exercise auto-start, expiry, aggregate delivery, canonical grade-third placement, and host-owned unmounting. It uses no production credentials or private host interfaces. The E2E-only build mode includes this page; the normal release build excludes it.
 
 ## Ownership boundary
 

@@ -1,4 +1,12 @@
 import { expect, test } from "../browserErrorFixture";
+import type { Page } from "@playwright/test";
+
+async function setVisibility(page: Page, state: "visible" | "hidden") {
+  await page.evaluate((nextState) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: nextState });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+}
 
 const FIXED_TIME = new Date("2026-01-01T00:00:00.000Z");
 
@@ -31,6 +39,17 @@ test.describe("GAME-292 local host contract harness", () => {
     await expect(page.getByTestId("host-events")).toContainText("error:recoverable:AUTO_START_REQUIRES_BAND");
     await page.getByRole("button", { name: /Grades 1/ }).click();
     await expect(page.getByText(/Quick warm-up/)).toBeVisible();
+  });
+
+  test("auto-starts from a canonical grade-third placement result", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "The local host lifecycle journey runs once in desktop Chromium.");
+    await page.clock.install({ time: FIXED_TIME });
+    await page.goto("/examples/host-harness.html?placement=levelbest&grade=7&third=late&remainingMs=30000");
+
+    await expect(page.getByRole("slider")).toBeVisible();
+    await expect(page.getByText(/Land on/)).toBeVisible();
+    await page.getByRole("button", { name: "Exit" }).click();
+    await expect(page.getByTestId("host-events")).toContainText("exit:user-exit");
   });
 
   test("emits one round-completion fact and a session aggregate to the host", async ({ page }, testInfo) => {
@@ -69,5 +88,22 @@ test.describe("GAME-292 local host contract harness", () => {
 
     await page.clock.fastForward(15_000);
     await expect(page.getByTestId("host-events").locator("li")).toHaveCount(3);
+  });
+
+  test("keeps the host deadline authoritative while the tab is hidden", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "The local host lifecycle journey runs once in desktop Chromium.");
+    await page.clock.install({ time: FIXED_TIME });
+    await page.goto("/examples/host-harness.html?remainingMs=1500");
+    await expect(page.getByRole("slider")).toBeVisible();
+
+    await setVisibility(page, "hidden");
+    await expect(page.getByTestId("clock-status")).toHaveText("The host break clock continues while this tab is hidden.");
+    await page.clock.fastForward(1_500);
+    await expect(page.getByTestId("host-status")).toHaveText("Host returned to practice");
+    await setVisibility(page, "visible");
+    await expect(page.getByTestId("host-events").locator("li")).toHaveText([
+      "aggregate:break-complete:0",
+      "return:deadline",
+    ]);
   });
 });

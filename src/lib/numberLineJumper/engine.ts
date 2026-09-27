@@ -883,9 +883,24 @@ export function generateRoundTargets(
 export const EXACT_THRESHOLD = 0.05; // ≤ 5 %
 export const CLOSE_THRESHOLD = 0.15; // ≤ 15 %
 
-function closenessFromError(error: number): Closeness {
-  if (error <= EXACT_THRESHOLD) return "exact";
-  if (error <= CLOSE_THRESHOLD) return "close";
+/**
+ * Inclusive tier membership absorbs binary floating-point dust in computed
+ * errors. A nominally exact-threshold placement such as 0.55 on a 0–1 line
+ * with a 0.5 target computes |0.55 − 0.5| = 0.050000000000000044 — one ulp
+ * past the threshold — which a raw `<=` would misclassify and mirror
+ * asymmetrically against 0.45. The tolerance is many orders of magnitude
+ * above that ulp dust and far below the 0.10 tier gap, so genuinely farther
+ * placements can never be pulled into a better tier.
+ */
+const TIER_TOLERANCE = 1e-12;
+
+function meetsThreshold(error: number, threshold: number): boolean {
+  return error <= threshold + TIER_TOLERANCE;
+}
+
+export function closenessFromError(error: number): Closeness {
+  if (meetsThreshold(error, EXACT_THRESHOLD)) return "exact";
+  if (meetsThreshold(error, CLOSE_THRESHOLD)) return "close";
   return "far";
 }
 
@@ -941,11 +956,11 @@ function strategyForTarget(target: Target, direction: Direction): string {
   const { min, max } = target.range;
   const midpoint = midpointFor(target.range);
   if (min < 0 && max > 0) {
-    return direction === "low"
-      ? "Find 0 first, then move left toward the negative target."
-      : direction === "high"
-        ? "Find 0 first, then move right toward the positive target."
-        : "Find 0 first, then split the line into equal left and right parts.";
+    return target.value < 0
+      ? "Find 0 first, then use the negative-side marks to estimate the target."
+      : target.value > 0
+        ? "Find 0 first, then use the positive-side marks to estimate the target."
+        : "Find 0 first; the target is at the sign change.";
   }
   if (target.kind === "fraction") {
     return `Find the midpoint, then use ${formatNumberValue(min)} and ${formatNumberValue(max)} as anchors and partition the space into ${target.display.includes("/") ? "equal denominator parts" : "equal parts"}.`;
@@ -954,7 +969,16 @@ function strategyForTarget(target: Target, direction: Direction): string {
     return `Start at ${formatNumberValue(midpoint)}, then use tenths or hundredths to nudge toward the target.`;
   }
   if (max >= 1000) {
-    return `Start at ${formatNumberValue(midpoint)}, then decide whether the target is closer to the next hundred or thousand.`;
+    const anchorStep = 10 ** Math.max(0, Math.floor(Math.log10(max)) - 1);
+    let lowerAnchor = Math.floor(target.value / anchorStep) * anchorStep;
+    let upperAnchor = Math.ceil(target.value / anchorStep) * anchorStep;
+    if (lowerAnchor === upperAnchor) {
+      lowerAnchor -= anchorStep;
+      upperAnchor += anchorStep;
+    }
+    lowerAnchor = Math.max(min, lowerAnchor);
+    upperAnchor = Math.min(max, upperAnchor);
+    return `Use ${formatNumberValue(lowerAnchor)} and ${formatNumberValue(upperAnchor)} as nearby anchors, then estimate between them.`;
   }
   return direction === "low"
     ? `Start at ${formatNumberValue(midpoint)}, then nudge a little right.`

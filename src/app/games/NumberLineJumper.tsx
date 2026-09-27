@@ -34,6 +34,7 @@ import {
 } from "@/lib/numberLineJumper/engine";
 import type { AdaptiveTargetGeneratorState } from "@/lib/numberLineJumper/engine";
 import { generateExplorePrompt } from "@/lib/numberLineJumper/explorePrompt";
+import { REVEAL_MOTION_TOKENS, revealMotionFromError } from "@/lib/numberLineJumper/motion";
 import { sessionAggregates } from "@/lib/numberLineJumper/aggregates";
 import {
   createHostEventSinkV1,
@@ -46,12 +47,22 @@ import type {
   NumberLineJumperHostV1,
 } from "@/lib/numberLineJumper/hostContract";
 import { closeSoundContext, playSoundCue, soundCueForError, type SoundCue } from "@/lib/numberLineJumper/sound";
+import { createSessionClock, type SessionClock } from "@/lib/numberLineJumper/sessionClock";
 import {
   recordCallouts,
+  sessionBestsLine,
+  sessionRecordCallouts,
   updateVisitBests,
   visitBestsLine,
   type VisitBests,
 } from "@/lib/numberLineJumper/visitBests";
+import {
+  createSessionStoreAdapter,
+  getBrowserSessionStorage,
+  SESSION_RECORDS_ENABLED,
+  type SessionStoreState,
+  type StoredRound,
+} from "@/lib/numberLineJumper/sessionStore";
 import type {
   Closeness,
   NumberKind,
@@ -92,6 +103,34 @@ function prefersReducedMotion(): boolean {
 
 function posStyle(norm: number): CSSProperties {
   return { ["--nl-pos" as string]: String(norm) } as CSSProperties;
+}
+
+function targetPositionStyle(norm: number): CSSProperties {
+  return { transform: `translateX(${norm * 100}%)` };
+}
+
+function revealMotionStyle(score: PlacementScore): CSSProperties {
+  const motion = revealMotionFromError(score.error);
+  return {
+    "--nl-reveal-intensity": String(motion.intensity),
+    "--nl-reveal-scale": String(motion.scale),
+    "--nl-reveal-glow": `${motion.glowBlurPx}px`,
+    "--nl-reveal-duration": `${motion.durationMs}ms`,
+    "--nl-reveal-settle-duration": `${motion.farSettleDurationMs}ms`,
+    "--nl-reveal-settle-scale": String(motion.farSettleScale),
+    "--nl-reveal-easing": REVEAL_MOTION_TOKENS.easing,
+  } as CSSProperties;
+}
+
+function edgeAlignmentClass(norm: number, prefix: "nl-marker" | "nl-truth"): string {
+  if (norm <= 0.12) return `${prefix}-edge-start`;
+  if (norm >= 0.88) return `${prefix}-edge-end`;
+  return "";
+}
+
+function exploreZoomLabel(level: number, range: Range): string {
+  const ticks = exploreZoomTicks(range);
+  return `Zoom level ${level + 1} of ${EXPLORE_ZOOM_LEVELS}, showing ${formatRangeValue(range.min)} to ${formatRangeValue(range.max)} with major ticks every ${formatValue(ticks.major)}`;
 }
 
 function midpointLabel(range: Range): string {
@@ -139,9 +178,26 @@ function HostBreakBadge({ secondsRemaining }: { secondsRemaining: number | null 
     : <p className="microcopy" role="timer" aria-label={`Break time remaining: ${secondsRemaining} seconds`}>Break · {secondsRemaining}s left</p>;
 }
 
+const browserSessionClockScheduler = {
+  now: () => Date.now(),
+  schedule: (callback: () => void, delayMs: number) => window.setTimeout(callback, delayMs),
+  cancel: (handle: unknown) => window.clearTimeout(handle as number),
+};
+
 /** Module-scope seed source keeps the impure call out of component render scope. */
 function newGameSeed(): number {
   return Date.now() % 1_000_000;
+}
+
+/** Keep the seeded generator reproducible across a browser-tab resume. */
+function trackedMulberry32(seed: number, callsRef: { current: number }, initialCalls = 0): () => number {
+  const rng = mulberry32(seed);
+  for (let index = 0; index < initialCalls; index += 1) rng();
+  callsRef.current = initialCalls;
+  return () => {
+    callsRef.current += 1;
+    return rng();
+  };
 }
 
 export default function NumberLineJumper({
@@ -152,6 +208,20 @@ export default function NumberLineJumper({
   host?: NumberLineJumperHostV1;
 }) {
   const [hostRuntime] = useState(() => resolveHostContractV1(host));
+  const sessionStoreRef = useRef<ReturnType<typeof createSessionStoreAdapter> | null>(null);
+  if (sessionStoreRef.current === null) {
+    sessionStoreRef.current = createSessionStoreAdapter(
+      SESSION_RECORDS_ENABLED && hostRuntime.mode === "free" ? getBrowserSessionStorage() : null,
+    );
+  }
+  const [sessionState, setSessionState] = useState<SessionStoreState>(() => sessionStoreRef.current!.read());
+  const sessionStateRef = useRef(sessionState);
+  const updateSessionState = useCallback((update: (state: SessionStoreState) => SessionStoreState) => {
+    const next = update(sessionStateRef.current);
+    sessionStateRef.current = next;
+    setSessionState(next);
+    sessionStoreRef.current?.write(next);
+  }, []);
   const hostCallbacksRef = useRef(host?.callbacks);
   hostCallbacksRef.current = host?.callbacks;
   const hostEventSinkRef = useRef<HostEventSinkV1 | null>(null);
@@ -169,6 +239,8 @@ export default function NumberLineJumper({
   const [phase, setPhase] = useState<Phase>("setup");
   const [mode, setMode] = useState<RoundMode>("guided");
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
+  const timeLeftRef = useRef(ROUND_SECONDS);
+  timeLeftRef.current = timeLeft;
   const [hostBreakSecondsLeft, setHostBreakSecondsLeft] = useState<number | null>(null);
   const [target, setTarget] = useState<Target | null>(null);
   const [markerNorm, setMarkerNorm] = useState(0.5);
@@ -194,13 +266,18 @@ export default function NumberLineJumper({
   const [targetIndex, setTargetIndex] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [waitForMe, setWaitForMe] = useState(false);
   const [announce, setAnnounce] = useState("");
+  const [clockStatus, setClockStatus] = useState("");
   // Visit bests live in React memory for this page session only.
   // Null until a first completed run; a remount/reload starts a fresh visit.
   const [visitBests, setVisitBests] = useState<VisitBests | null>(null);
   const [visitDelta, setVisitDelta] = useState({ averageError: false, closeStreak: false });
+  const [sessionDelta, setSessionDelta] = useState({ averageError: false, closeStreak: false });
 
   const rngRef = useRef<() => number>(() => 0.5);
+  const runSeedRef = useRef(0);
+  const rngCallsRef = useRef(0);
   const exploreRngRef = useRef<() => number>(() => 0.5);
   const adaptiveGeneratorStateRef = useRef<AdaptiveTargetGeneratorState>(createAdaptiveTargetGeneratorState());
   const runBandRef = useRef<PlacementBand | null>(null);
@@ -212,17 +289,25 @@ export default function NumberLineJumper({
   const roundFinalizedRef = useRef(false);
   const hostBreakCompletedRef = useRef(false);
   const hostAutoStartRef = useRef(false);
+  const restoredRevealRef = useRef(false);
   const exitRequestedRef = useRef(false);
   const visitBestsRef = useRef<VisitBests | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<HTMLDivElement>(null);
+  const trackRectRef = useRef<{ left: number; width: number } | null>(null);
   const pendingPointerNormRef = useRef<number | null>(null);
   const pointerFrameRef = useRef<number | null>(null);
+  const exploreReadoutValueRef = useRef<HTMLElement>(null);
+  const exploreReadoutPercentRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const advanceTimerRef = useRef<number | null>(null);
+  const roundClockRef = useRef<SessionClock | null>(null);
+  const roundClockVisibilityCleanupRef = useRef<(() => void) | null>(null);
+  const endRoundRef = useRef<() => void>(() => undefined);
+  const markerNormRef = useRef(0.5);
   const lineId = useId();
   const valueId = useId();
   const warmupLineId = useId();
@@ -236,6 +321,53 @@ export default function NumberLineJumper({
       advanceTimerRef.current = null;
     }
   }, []);
+
+  const clearRoundClock = useCallback(() => {
+    roundClockVisibilityCleanupRef.current?.();
+    roundClockVisibilityCleanupRef.current = null;
+    roundClockRef.current?.dispose();
+    roundClockRef.current = null;
+  }, []);
+
+  const clearSavedRound = useCallback(() => {
+    const next = { ...sessionStateRef.current, inProgress: null };
+    sessionStateRef.current = next;
+    setSessionState(next);
+    if (next.bests === null) sessionStoreRef.current?.clear();
+    else sessionStoreRef.current?.write(next);
+  }, []);
+
+  const persistCurrentRound = useCallback(() => {
+    if (!SESSION_RECORDS_ENABLED || exitRequestedRef.current || hostRuntime.mode !== "free") return;
+    if ((phase !== "playing" && phase !== "reveal") || !band || !target) return;
+    const snapshot: StoredRound = {
+      version: 1,
+      savedAt: Date.now(),
+      roundNumber: Math.max(1, roundNumberRef.current),
+      band,
+      mode: runModeRef.current,
+      phase,
+      targetIndex,
+      target,
+      trials: [...trials],
+      scoreTotal,
+      timeLeft,
+      markerNorm: markerNormRef.current,
+      committed: phase === "reveal" && committed,
+      seed: runSeedRef.current,
+      rngCalls: rngCallsRef.current,
+      adaptiveGeneratorState: adaptiveGeneratorStateRef.current,
+    };
+    updateSessionState((state) => ({
+      ...state,
+      inProgress: snapshot,
+      nextRoundNumber: Math.max(state.nextRoundNumber, snapshot.roundNumber + 1),
+    }));
+  }, [band, committed, hostRuntime.mode, phase, scoreTotal, target, targetIndex, timeLeft, trials, updateSessionState]);
+
+  useEffect(() => {
+    persistCurrentRound();
+  }, [persistCurrentRound]);
 
   useEffect(() => {
     hostEventSink.activate();
@@ -251,13 +383,43 @@ export default function NumberLineJumper({
       setHostBreakSecondsLeft(null);
       return;
     }
+    let displayTimer: number | null = null;
+    let disposed = false;
+    const deadlineEpochMs = hostRuntime.deadlineEpochMs;
+    const finishHostBreak = () => {
+      if (hostBreakCompletedRef.current) return;
+      hostBreakCompletedRef.current = true;
+      setClockStatus("The host break ended. Returning to practice.");
+      const context = hostRuntime.sessionContext;
+      hostEventSink.emitSessionAggregate({
+        version: HOST_CONTRACT_VERSION,
+        reason: "break-complete",
+        aggregate: sessionAggregates({ trials: sessionTrialsRef.current }),
+        context,
+      });
+      hostEventSink.emitReturnToPractice({ version: HOST_CONTRACT_VERSION, reason: "deadline", context });
+    };
     const updateRemaining = () => {
-      setHostBreakSecondsLeft(Math.ceil(Math.max(0, hostRuntime.deadlineEpochMs! - Date.now()) / 1_000));
+      if (disposed) return;
+      if (displayTimer !== null) window.clearTimeout(displayTimer);
+      const remaining = Math.ceil(Math.max(0, deadlineEpochMs - Date.now()) / 1_000);
+      setHostBreakSecondsLeft(remaining);
+      if (remaining > 0) displayTimer = window.setTimeout(updateRemaining, 1_000);
     };
     updateRemaining();
-    const interval = window.setInterval(updateRemaining, 1_000);
-    return () => window.clearInterval(interval);
-  }, [hostRuntime]);
+    const onVisibilityChange = () => {
+      updateRemaining();
+      if (document.visibilityState === "visible" && deadlineEpochMs <= Date.now()) finishHostBreak();
+      else if (document.visibilityState === "hidden") setClockStatus("The host break clock continues while this tab is hidden.");
+      else setClockStatus("The host break clock is active.");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      disposed = true;
+      if (displayTimer !== null) window.clearTimeout(displayTimer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [hostEventSink, hostRuntime]);
 
   useEffect(() => {
     if (hostRuntime.mode !== "break" || hostRuntime.deadlineEpochMs === null) return;
@@ -268,6 +430,7 @@ export default function NumberLineJumper({
     }, () => {
       if (hostBreakCompletedRef.current) return;
       hostBreakCompletedRef.current = true;
+      setClockStatus("The host break ended. Returning to practice.");
       const context = hostRuntime.sessionContext;
       hostEventSink.emitSessionAggregate({
         version: HOST_CONTRACT_VERSION,
@@ -290,6 +453,8 @@ export default function NumberLineJumper({
     if (exitRequestedRef.current) return;
     exitRequestedRef.current = true;
     clearAdvanceTimer();
+    clearRoundClock();
+    clearSavedRound();
     const context = hostRuntime.sessionContext;
     hostEventSink.emitSessionAggregate({
       version: HOST_CONTRACT_VERSION,
@@ -302,12 +467,14 @@ export default function NumberLineJumper({
     }
     hostEventSink.emitExit({ version: HOST_CONTRACT_VERSION, reason: "user-exit", mode: hostRuntime.mode, context });
     onExit();
-  }, [clearAdvanceTimer, hostEventSink, hostRuntime, onExit]);
+  }, [clearAdvanceTimer, clearRoundClock, clearSavedRound, hostEventSink, hostRuntime, onExit]);
 
   const endRound = useCallback(() => {
     if (roundFinalizedRef.current) return;
     roundFinalizedRef.current = true;
     clearAdvanceTimer();
+    clearRoundClock();
+    clearSavedRound();
     playCue("finish");
     const summary = summarizeRound(trialsRef.current);
     const runBand = runBandRef.current;
@@ -328,11 +495,59 @@ export default function NumberLineJumper({
     visitBestsRef.current = result.bests;
     setVisitBests(result.bests);
     setVisitDelta(result.delta);
+    const sessionResult = updateVisitBests(sessionStateRef.current.bests, summary);
+    setSessionDelta(sessionResult.delta);
+    updateSessionState((state) => ({
+      ...state,
+      bests: sessionResult.bests,
+      inProgress: null,
+      nextRoundNumber: Math.max(state.nextRoundNumber, roundNumberRef.current + 1),
+    }));
     setPhase("done");
     setCommitted(false);
     setLastScore(null);
     setAnnounce("");
-  }, [clearAdvanceTimer, hostEventSink, hostRuntime, playCue]);
+    setClockStatus("");
+  }, [clearAdvanceTimer, clearRoundClock, clearSavedRound, hostEventSink, hostRuntime, playCue, updateSessionState]);
+
+  endRoundRef.current = endRound;
+
+  useEffect(() => {
+    if (phase === "playing" && band) {
+      if (roundClockRef.current === null) {
+        const clock = createSessionClock({
+          mode: hostRuntime.mode,
+          durationMs: ROUND_SECONDS * 1_000,
+          initialRemainingMs: timeLeftRef.current * 1_000,
+          scheduler: browserSessionClockScheduler,
+          onChange: ({ remainingMs }) => setTimeLeft(Math.ceil(remainingMs / 1_000)),
+          onExpire: () => endRoundRef.current(),
+        });
+        roundClockRef.current = clock;
+        const onVisibilityChange = () => {
+          const hidden = document.visibilityState === "hidden";
+          clock.setHidden(hidden);
+          if (hostRuntime.mode === "free") {
+            setClockStatus(hidden ? "Round clock paused while this tab is hidden." : "Round clock resumed.");
+          } else {
+            setClockStatus(hidden ? "The host break clock continues while this tab is hidden." : "The host break clock is active.");
+          }
+        };
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        roundClockVisibilityCleanupRef.current = () => document.removeEventListener("visibilitychange", onVisibilityChange);
+        clock.setHidden(document.visibilityState === "hidden");
+        clock.start();
+      } else {
+        roundClockRef.current.resume();
+      }
+      return;
+    }
+    if (phase === "reveal") {
+      roundClockRef.current?.pause();
+      return;
+    }
+    clearRoundClock();
+  }, [band, clearRoundClock, hostRuntime.mode, phase]);
 
   const nextTarget = useCallback((completedTrials: readonly TrialRecord[]) => {
     clearAdvanceTimer();
@@ -362,11 +577,20 @@ export default function NumberLineJumper({
     setPhase("playing");
   }, [clearAdvanceTimer, endRound]);
 
+  const advanceReveal = useCallback((completedTrials: readonly TrialRecord[]) => {
+    clearAdvanceTimer();
+    if (completedTrials.length >= ROUND_MAX_TRIALS) endRound();
+    else nextTarget(completedTrials);
+  }, [clearAdvanceTimer, endRound, nextTarget]);
+
   function prepareRound(id: PlacementBand) {
     clearAdvanceTimer();
+    clearRoundClock();
+    clearSavedRound();
     roundFinalizedRef.current = false;
     const nextSeed = newGameSeed();
-    rngRef.current = mulberry32(nextSeed);
+    runSeedRef.current = nextSeed;
+    rngRef.current = trackedMulberry32(nextSeed, rngCallsRef);
     runBandRef.current = id;
     runModeRef.current = mode;
     adaptiveGeneratorStateRef.current = createAdaptiveTargetGeneratorState();
@@ -392,8 +616,17 @@ export default function NumberLineJumper({
     setWarmupNorm(0.5);
     setWarmupRevealed(false);
     setAnnounce("");
+    setClockStatus("");
     setTarget(first.target);
+    markerNormRef.current = 0.5;
     setMarkerNorm(0.5);
+    setSessionDelta({ averageError: false, closeStreak: false });
+  }
+
+  function claimNextRoundNumber() {
+    const next = Math.max(sessionStateRef.current.nextRoundNumber, roundNumberRef.current + 1);
+    roundNumberRef.current = next;
+    updateSessionState((state) => ({ ...state, nextRoundNumber: Math.max(state.nextRoundNumber, next + 1) }));
   }
 
   function selectBand(id: PlacementBand) {
@@ -402,17 +635,57 @@ export default function NumberLineJumper({
       setPhase("intro");
       return;
     }
-    roundNumberRef.current += 1;
+    claimNextRoundNumber();
     setPhase("playing");
     playCue("start");
   }
 
   function startRound(id: PlacementBand) {
     prepareRound(id);
-    roundNumberRef.current += 1;
+    claimNextRoundNumber();
     setPhase("playing");
     playCue("start");
   }
+
+  function resumeSavedRound() {
+    const saved = sessionStateRef.current.inProgress;
+    if (!saved || hostRuntime.mode !== "free") return;
+    clearAdvanceTimer();
+    roundFinalizedRef.current = false;
+    runBandRef.current = saved.band;
+    runModeRef.current = saved.mode;
+    runSeedRef.current = saved.seed;
+    rngRef.current = trackedMulberry32(saved.seed, rngCallsRef, saved.rngCalls);
+    adaptiveGeneratorStateRef.current = saved.adaptiveGeneratorState;
+    targetIndexRef.current = saved.targetIndex;
+    trialsRef.current = [...saved.trials];
+    sessionTrialsRef.current = [...saved.trials];
+    roundNumberRef.current = saved.roundNumber;
+    restoredRevealRef.current = saved.phase === "reveal";
+    setBand(saved.band);
+    setMode(saved.mode);
+    setTargetIndex(saved.targetIndex);
+    setTarget(saved.target);
+    setTrials([...saved.trials]);
+    setScoreTotal(saved.scoreTotal);
+    setTimeLeft(saved.timeLeft);
+    markerNormRef.current = saved.markerNorm;
+    setMarkerNorm(saved.markerNorm);
+    setCommitted(saved.committed);
+    setLastScore(saved.committed ? scorePlacement(saved.markerNorm, saved.target) : null);
+    setShowHint(false);
+    setAnnounce("Your saved round is back. Keep estimating from the midpoint.");
+    setPhase(saved.phase);
+  }
+
+  useEffect(() => {
+    if (!restoredRevealRef.current || phase !== "reveal" || !lastScore) return;
+    restoredRevealRef.current = false;
+    if (waitForMe) return;
+    const delay = revealMs(lastScore.closeness, prefersReducedMotion());
+    advanceTimerRef.current = window.setTimeout(() => advanceReveal(trialsRef.current), delay);
+    return clearAdvanceTimer;
+  }, [advanceReveal, clearAdvanceTimer, lastScore, phase, waitForMe]);
 
   useEffect(() => {
     if (hostAutoStartRef.current || !hostRuntime.autoStart || !hostRuntime.initialBand) return;
@@ -422,14 +695,19 @@ export default function NumberLineJumper({
 
   function goToSetup() {
     clearAdvanceTimer();
+    clearRoundClock();
+    clearSavedRound();
     setBand(null);
     setTarget(null);
     setPhase("setup");
     setAnnounce("");
+    setClockStatus("");
   }
 
   function beginExplore() {
     clearAdvanceTimer();
+    clearRoundClock();
+    clearSavedRound();
     exploreRngRef.current = mulberry32(newGameSeed());
     setBand(null);
     setTarget(null);
@@ -442,6 +720,23 @@ export default function NumberLineJumper({
     pinchRef.current = null;
     setPhase("explore");
     setAnnounce("");
+    setClockStatus("");
+  }
+
+  function clearSessionRecords() {
+    const empty: SessionStoreState = {
+      version: 1,
+      bests: null,
+      inProgress: null,
+      nextRoundNumber: 1,
+    };
+    sessionStateRef.current = empty;
+    setSessionState(empty);
+    sessionStoreRef.current?.clear();
+    setVisitBests(null);
+    visitBestsRef.current = null;
+    setVisitDelta({ averageError: false, closeStreak: false });
+    setSessionDelta({ averageError: false, closeStreak: false });
   }
 
   /** GAME-5: zoom the Explore window, preserving the jumper's value when possible. */
@@ -487,23 +782,20 @@ export default function NumberLineJumper({
     }
   }
 
-  useEffect(() => () => clearAdvanceTimer(), [clearAdvanceTimer]);
+  useEffect(() => () => {
+    clearAdvanceTimer();
+    clearRoundClock();
+  }, [clearAdvanceTimer, clearRoundClock]);
+
+  useEffect(() => () => {
+    if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
+  }, []);
 
   useEffect(() => () => {
     if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
   }, []);
 
   useEffect(() => () => closeSoundContext(audioContextRef), []);
-
-  useEffect(() => {
-    if (phase !== "playing") return;
-    if (timeLeft <= 0) {
-      const endTimer = window.setTimeout(() => endRound(), 0);
-      return () => window.clearTimeout(endTimer);
-    }
-    const timer = window.setTimeout(() => setTimeLeft((value) => value - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [phase, timeLeft, endRound]);
 
   useEffect(() => {
     if ((phase === "playing" || phase === "intro" || phase === "explore" || phase === "done") && headingRef.current) {
@@ -514,12 +806,12 @@ export default function NumberLineJumper({
     }
   }, [phase, target?.display, committed]);
 
-  function activeRange(): Range {
+  function activeRange(norm?: number): Range {
     if (phase === "explore") {
       // GAME-5: the zoom window is the single source of truth for Explore.
       // Recomputed from (exploreZoom, exploreNorm), so zoom, pan, marker,
       // and readout never drift from each other.
-      return exploreZoomWindow(exploreZoom, exploreNorm);
+      return exploreZoomWindow(exploreZoom, norm ?? exploreNorm);
     }
     return target?.range ?? { min: 0, max: 1 };
   }
@@ -536,6 +828,7 @@ export default function NumberLineJumper({
       pointerFrameRef.current = null;
     }
     pendingPointerNormRef.current = null;
+    markerNormRef.current = next;
     if (phase === "intro") setWarmupNorm(next);
     else if (phase === "explore") setExploreNorm(next);
     else setMarkerNorm(next);
@@ -570,7 +863,12 @@ export default function NumberLineJumper({
   function normFromClientX(clientX: number): number {
     const el = trackRef.current;
     if (!el) return 0.5;
-    const rect = el.getBoundingClientRect();
+    let rect = trackRectRef.current;
+    if (!rect) {
+      const measured = el.getBoundingClientRect();
+      rect = { left: measured.left, width: measured.width };
+      trackRectRef.current = rect;
+    }
     if (rect.width <= 0) return 0.5;
     const inset = 12;
     const usable = Math.max(1, rect.width - inset * 2);
@@ -604,6 +902,8 @@ export default function NumberLineJumper({
       // Continue the interaction even when capture is unavailable.
     }
     draggingRef.current = true;
+    trackRectRef.current = null;
+    flushPointerNorm();
     setActiveNorm(normFromClientX(event.clientX));
   }
 
@@ -642,6 +942,7 @@ export default function NumberLineJumper({
     if (!draggingRef.current) return;
     draggingRef.current = false;
     flushPointerNorm();
+    persistCurrentRound();
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
@@ -682,8 +983,6 @@ export default function NumberLineJumper({
       points: result.points,
     };
 
-    const delay = revealMs(result.closeness, prefersReducedMotion());
-    const nextTrialCount = trials.length + 1;
     // Compute the next trials array once, purely, so the ref mirror and the
     // state stay in sync even under double-invoked updaters.
     const nextTrials = [...trials, record];
@@ -691,15 +990,16 @@ export default function NumberLineJumper({
     sessionTrialsRef.current = [...sessionTrialsRef.current, record];
     setTrials(nextTrials);
     clearAdvanceTimer();
-    advanceTimerRef.current = window.setTimeout(() => {
-      if (nextTrialCount >= ROUND_MAX_TRIALS) endRound();
-      else nextTarget(nextTrials);
-    }, delay);
+    if (!waitForMe) {
+      const delay = revealMs(result.closeness, prefersReducedMotion());
+      advanceTimerRef.current = window.setTimeout(() => advanceReveal(nextTrials), delay);
+    }
   }
 
   function moveMarker(next: number) {
     const clamped = Math.min(1, Math.max(0, next));
     setActiveNorm(clamped);
+    if (phase === "playing") persistCurrentRound();
     const range = activeRange();
     const value = valueAtPosition(clamped, range);
     setAnnounce(
@@ -753,6 +1053,23 @@ export default function NumberLineJumper({
         </div>
         <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
 
+        {SESSION_RECORDS_ENABLED && (sessionState.inProgress || sessionState.bests) ? (
+          <div className="nl-session-card" data-testid="session-records">
+            <strong>Same-tab session</strong>
+            {sessionState.inProgress ? (
+              <>
+                <p className="microcopy">You have an unfinished {sessionState.inProgress.mode} round on {BAND_META[sessionState.inProgress.band].label}, trial {Math.min(sessionState.inProgress.targetIndex + 1, ROUND_MAX_TRIALS)} of {ROUND_MAX_TRIALS}.</p>
+                <div className="demo-controls nl-action-row">
+                  <button type="button" className="button primary" onClick={resumeSavedRound}>Resume saved round</button>
+                  <button type="button" className="button subtle" onClick={clearSavedRound}>Discard saved round</button>
+                </div>
+              </>
+            ) : null}
+            {sessionState.bests ? <p className="microcopy">Session best: {formatAverageError(sessionState.bests.averageError)} average error · {sessionState.bests.closeStreak} close streak.</p> : null}
+            <button type="button" className="link-button" onClick={clearSessionRecords}>Clear session records</button>
+          </div>
+        ) : null}
+
         {hostRuntime.initialBand && !hostRuntime.autoStart ? (
           <p className="microcopy">Suggested level: {BAND_META[hostRuntime.initialBand].label}. You can choose another.</p>
         ) : null}
@@ -791,6 +1108,10 @@ export default function NumberLineJumper({
         <label className="nl-sound-toggle">
           <input type="checkbox" checked={soundEnabled} onChange={(event) => setSoundEnabled(event.target.checked)} />
           <span>Quiet sound cues (optional)</span>
+        </label>
+        <label className="nl-sound-toggle">
+          <input type="checkbox" checked={waitForMe} onChange={(event) => setWaitForMe(event.target.checked)} />
+          <span>Wait for me after feedback (this session)</span>
         </label>
         <p className="microcopy nl-privacy-note">Session-only play — nothing about you is saved.</p>
       </div>
@@ -862,7 +1183,7 @@ export default function NumberLineJumper({
               <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
               <span className="nl-marker-label">Your practice estimate</span>
             </div>
-            {warmupRevealed ? <div className="nl-truth nl-truth-reveal" style={posStyle(trueNorm)} aria-hidden="true"><span className="nl-truth-flag">{target.display}</span></div> : null}
+            {warmupRevealed ? <div className={`nl-truth-positioner nl-truth-reveal ${edgeAlignmentClass(trueNorm, "nl-truth")}`} style={targetPositionStyle(trueNorm)} aria-hidden="true"><div className="nl-truth"><span className="nl-truth-flag">{target.display}</span></div></div> : null}
           </div>
           <p id={warmupValueId} className="sr-only" aria-live="polite">{announce}</p>
         </div>
@@ -885,7 +1206,7 @@ export default function NumberLineJumper({
     const reduceMotion = prefersReducedMotion();
     const midLabel = midpointLabel(range);
     const readoutValue = formatValue(valueAtPosition(exploreNorm, range));
-    const zoomLabel = `Zoom level ${exploreZoom + 1} of ${EXPLORE_ZOOM_LEVELS}, showing ${formatRangeValue(range.min)} to ${formatRangeValue(range.max)} with major ticks every ${formatValue(ticks.major)}`;
+    const zoomLabel = exploreZoomLabel(exploreZoom, range);
     return (
       <div className="demo-panel">
         <div className="demo-status">
@@ -1019,7 +1340,7 @@ export default function NumberLineJumper({
             onPointerCancel={onPointerUp}
             onWheel={(event) => {
               // GAME-5: wheel zoom; discrete steps keep tick math exact.
-              event.preventDefault();
+              if (event.cancelable) event.preventDefault();
               zoomExplore(exploreZoom + (event.deltaY > 0 ? -1 : 1));
             }}
             onKeyDown={onKeyDown}
@@ -1039,7 +1360,7 @@ export default function NumberLineJumper({
             </div>
           </div>
           <p id={exploreValueId} className="sr-only" aria-live="polite">{announce}</p>
-          <p className="nl-explore-readout">Jumper at <strong>{readoutValue}</strong> · {Math.round(exploreNorm * 100)}% across the visible line</p>
+          <p className="nl-explore-readout">Jumper at <strong ref={exploreReadoutValueRef}>{readoutValue}</strong> · <span ref={exploreReadoutPercentRef}>{Math.round(exploreNorm * 100)}%</span> across the visible line</p>
         </div>
 
         <div className="demo-controls nl-action-row">
@@ -1059,6 +1380,8 @@ export default function NumberLineJumper({
     const closeRate = Math.round(aggregates.pctClose ?? 0);
     const bestsLine = visitBestsLine(visitBests);
     const callouts = recordCallouts(visitDelta, summary);
+    const sessionLine = sessionBestsLine(sessionState.bests);
+    const sessionCallouts = sessionRecordCallouts(sessionDelta, summary);
     return (
       <div className="demo-panel closing-copy">
         <div className="eyebrow">Round complete</div>
@@ -1069,11 +1392,19 @@ export default function NumberLineJumper({
           <div className="brief-box"><span>Avg. error</span><strong>{formatAverageError(aggregates.avgRelativeError ?? 0)}</strong></div>
           <div className="brief-box"><span>Best avg error this visit</span><strong>{visitBests ? formatAverageError(visitBests.averageError) : "—"}</strong></div>
           <div className="brief-box"><span>Best close streak this visit</span><strong>{visitBests ? visitBests.closeStreak : "—"}</strong></div>
+          {SESSION_RECORDS_ENABLED ? <div className="brief-box"><span>Best avg error this session</span><strong>{sessionState.bests ? formatAverageError(sessionState.bests.averageError) : "—"}</strong></div> : null}
+          {SESSION_RECORDS_ENABLED ? <div className="brief-box"><span>Best close streak this session</span><strong>{sessionState.bests ? sessionState.bests.closeStreak : "—"}</strong></div> : null}
         </div>
         {bestsLine ? <p className="lede nl-visit-bests" style={{ margin: "0 auto 8px", maxWidth: 520 }}>{bestsLine}</p> : null}
         {callouts.length > 0 ? (
           <p className="lede nl-visit-record" style={{ margin: "0 auto 8px", maxWidth: 520 }}>
             {callouts.map((line) => <strong key={line}>{line}</strong>)}
+          </p>
+        ) : null}
+        {sessionLine ? <p className="lede nl-visit-bests" style={{ margin: "0 auto 8px", maxWidth: 520 }}>{sessionLine}</p> : null}
+        {sessionCallouts.length > 0 ? (
+          <p className="lede nl-visit-record" style={{ margin: "0 auto 8px", maxWidth: 520 }}>
+            {sessionCallouts.map((line) => <strong key={line}>{line}</strong>)}
           </p>
         ) : null}
         <p className="lede" style={{ margin: "0 auto 8px", maxWidth: 520 }}>Close streak this round: <strong>{summary.bestStreak}</strong></p>
@@ -1115,6 +1446,7 @@ export default function NumberLineJumper({
         <button type="button" className="link-button" onClick={exitGame}>Exit</button>
       </div>
       <HostBreakBadge secondsRemaining={hostBreakSecondsLeft} />
+      <p data-testid="clock-status" className="sr-only" aria-live="polite">{clockStatus}</p>
       <div className="progress" aria-hidden="true"><span style={{ width: `${(timeLeft / ROUND_SECONDS) * 100}%` }} /></div>
 
       <div style={{ marginTop: 22 }}>
@@ -1150,11 +1482,11 @@ export default function NumberLineJumper({
           <div className="nl-rail" aria-hidden="true" />
           <div className="nl-mid-tick" aria-hidden="true" />
           {showHint ? <><div className="nl-quarter-tick nl-quarter-left" aria-hidden="true" /><div className="nl-quarter-tick nl-quarter-right" aria-hidden="true" /></> : null}
-          <div ref={markerRef} className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""}`} style={posStyle(markerNorm)} aria-hidden="true">
+          <div ref={markerRef} className={`nl-marker ${committed && lastScore ? `nl-marker-${lastScore.closeness} nl-marker-reveal` : ""}`} style={{ ...posStyle(markerNorm), ...(committed && lastScore ? revealMotionStyle(lastScore) : {}) }} aria-hidden="true">
             <span className="nl-jumper-token"><span className="nl-marker-dot" /></span>
             {committed ? <span className="nl-marker-label">Your estimate</span> : null}
           </div>
-          {committed && target ? <div className="nl-truth nl-truth-reveal" style={posStyle(trueNorm)} aria-hidden="true"><span className="nl-truth-flag">{target.display}</span></div> : null}
+          {committed && target && lastScore ? <div className={`nl-truth-positioner nl-truth-reveal ${edgeAlignmentClass(trueNorm, "nl-truth")}`} style={{ ...targetPositionStyle(trueNorm), ...revealMotionStyle(lastScore) }} aria-hidden="true"><div className="nl-truth"><span className="nl-truth-flag">{target.display}</span></div></div> : null}
         </div>
         <p id={valueId} className="sr-only" aria-live="polite">{announce}</p>
       </div>
@@ -1166,6 +1498,11 @@ export default function NumberLineJumper({
           <div className="nl-feedback-grid"><span>Your estimate <strong>{formatValue(lastScore.playerValue)}</strong></span><span>Target <strong>{target?.display ?? formatValue(lastScore.targetValue)}</strong></span></div>
           <span>Off by {formatPct(lastScore.error)} · +{lastScore.points} points</span>
           <span className="nl-feedback-next"><strong>Try this next time:</strong> {lastScore.nextStep}</span>
+          {waitForMe ? (
+            <div className="demo-controls nl-action-row" style={{ marginTop: 4 }}>
+              <button type="button" className="button primary" onClick={() => advanceReveal(trialsRef.current)}>Continue</button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="demo-controls nl-action-row" style={{ marginTop: 18 }}>

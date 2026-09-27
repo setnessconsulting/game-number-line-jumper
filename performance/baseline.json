@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "sourceSha": "9b5f418f10503e4fb2d592756f9fb19c22c12dc5",
+  "sourceSha": "68ee15bd814d956d54de70baf2679cadc5f26c6e",
   "learnerJavaScript": {
-    "rawBytes": 245811,
-    "gzipBytes": 74652
+    "rawBytes": 261112,
+    "gzipBytes": 78736
   },
   "materialIncreasePolicy": {
     "maxPercent": 5,

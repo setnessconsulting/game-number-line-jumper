@@ -22,6 +22,7 @@
 | `src/lib/numberLineJumper/adaptive.ts` | copied unchanged | Seeded, bounded, current-run-only adaptation. |
 | `src/lib/numberLineJumper/aggregates.ts` | copied unchanged | Session aggregate contract; no persistence or transport. |
 | `src/lib/numberLineJumper/visitBests.ts` | copied unchanged | React page-session bests support. |
+| `src/lib/numberLineJumper/sessionStore.ts` | standalone implementation | GAME-227's guarded, versioned browser-tab continuity boundary; no LevelBest storage or transport is imported. |
 | `src/lib/numberLineJumper/sound.ts` | mechanical standalone adaptation | Source logic is unchanged; the alias resolves inside this repository. Web Audio remains opt-in. |
 | `src/app/games/NumberLineJumper.tsx` | mechanical standalone adaptation | Shipping React surface retained at the same app path; host callback remains the existing `onExit` seam. |
 | Number Line Jumper unit tests | copied with path-preserving relocation | Tests remain executable parity evidence under `tests/`. |
@@ -35,9 +36,20 @@
 
 ## Known variance
 
-There is no known behavior-affecting variance from source commit `38a9dfa`. The standalone changes are limited to the Vite entry point, local file placement, alias resolution, extraction of only the game CSS rules, removal of LevelBest hub navigation from the browser harness, and replacement of timing sleeps with UI-observable waits. The game callback still exits to a fresh standalone setup view.
+There is no known behavior-affecting variance from source commit `38a9dfa` **except the recorded boundary-classification fix below**. The standalone changes are limited to the Vite entry point, local file placement, alias resolution, extraction of only the game CSS rules, removal of LevelBest hub navigation from the browser harness, and replacement of timing sleeps with UI-observable waits. The game callback still exits to a fresh standalone setup view.
 
 At the GAME-291 extraction commit, the standalone shell did not yet implement the host callback contract. GAME-292 subsequently added the host-agnostic v1 boundary and local harness; LevelBest application wiring remains outside this repository and is not a gameplay variance.
+
+### Boundary-classification fix (local automated-test hardening, 2026-09-22)
+
+A bounded boundary-test hardening pass found one defect in the source-tier logic: `closenessFromError` compared the computed relative error to the 5 %/15 % thresholds with a raw `<=`. Binary floating-point dust placed some nominally at-threshold errors one ulp past the limit — for example a 0.55 placement on a 0–1 line with a 0.5 target computes `|0.55 − 0.5| = 0.050000000000000044` — so such placements were misclassified one tier down, and mirrored placements (0.45 vs 0.55) classified asymmetrically. Expected behavior follows the documented contract (≤ 5 % exact, ≤ 15 % close, inclusively and symmetrically).
+
+The smallest correction:
+
+- `engine.ts` tier membership now uses an inclusive, epsilon-tolerant comparison (`1e-12`, seven orders of magnitude above the ulp dust and ten below the 0.10 tier gap; genuinely farther placements cannot be pulled into a better tier).
+- `engine.ts` exports the single `closenessFromError` classifier, and `sound.ts`'s `soundCueForError` now maps its cue from it instead of re-implementing the raw threshold comparison, so the audio cue always agrees with the on-screen closeness at boundaries.
+
+Regression evidence: `tests/numberLineJumperBoundaries.test.ts` (39 focused boundary tests). Four of them failed before the fix and pass after; no other suite behavior changed.
 
 ## Validation record
 
@@ -81,7 +93,7 @@ Remote branch `codex/game-291-bootstrap` was cloned at `8b72de3ec0feb3d516ebcd89
 
 The standalone repository now owns the PR/main quality gate; browser checks do not depend on the legacy application repository.
 
-- `npm run test:coverage` runs the 11 Vitest files with V8 coverage. The denominator is explicit: the game engine, aggregates, adaptive logic, visit bests, sound, Explore prompt, host contract, placement adapter, and seeded random helper. Each runtime module is held to at least 90% lines, branches, and functions. The type-only `types.ts` declarations are intentionally excluded because they emit no runtime behavior; no executable critical module is excluded.
+- `npm run test:coverage` runs the Vitest files with V8 coverage. The denominator is explicit: the game engine, aggregates, adaptive logic, visit bests, guarded session store, sound, Explore prompt, host contract, placement adapter, and seeded random helper. Each runtime module is held to at least 90% lines, branches, and functions. The type-only `types.ts` declarations are intentionally excluded because they emit no runtime behavior; no executable critical module is excluded.
 - The production browser config uses desktop Chromium and mobile WebKit against the normal production build on port 4173. Accessibility checks use that same build on port 4174. GAME-292 host-lifecycle journeys run against a separate test-only host-harness build on port 4175, not in the learner artifact.
 - A shared Playwright fixture fails tests on browser console errors and uncaught page errors. Playwright retry count is zero in every config; traces and reports preserve original failures.
 - CI always performs typecheck, lint, unit/coverage, production and host-test builds, the source/IP scan, and learner-bundle assertion. It classifies README/docs-only diffs to skip only the expensive browser matrix; a manual `workflow_dispatch` runs the complete matrix regardless of changed paths.
