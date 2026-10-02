@@ -6,27 +6,38 @@ import type {
 } from "@setnessconsulting/game-platform-sdk/core";
 import {
   IframeTransport,
+  type IframeTransportOptions,
   type HostTransport,
 } from "@setnessconsulting/game-platform-sdk/host";
+import adoption from "./gamePlatformSdkAdoption.json";
 
 export const NUMBER_LINE_JUMPER_GAME_IDENTITY: GameIdentity = {
-  gameId: "number-line-jumper",
-  gameVersion: "0.1.0",
-  sdkVersion: "0.1.1",
-  protocolVersion: "1.0",
-  runtimeKind: "web-dom",
-  capabilities: {
-    canPause: false,
-  },
+  gameId: adoption.gameId,
+  gameVersion: adoption.gameVersion,
+  sdkVersion: adoption.sdkVersion,
+  protocolVersion: adoption.protocolVersion as GameIdentity["protocolVersion"],
+  runtimeKind: adoption.runtimeKind as GameIdentity["runtimeKind"],
+  capabilities: adoption.capabilities,
 };
 
 export const GPSDK_HOST_HANDSHAKE_TIMEOUT_MS = 10_000;
+
+type AcceptedHostLaunchConfig = HostLaunchConfig & {
+  surfaceContext: NonNullable<HostLaunchConfig["surfaceContext"]> & {
+    surface: "arcade";
+  };
+};
+
+export type IframeTransportFactory = (options: IframeTransportOptions) => HostTransport;
+
+const createIframeTransport: IframeTransportFactory = (options) =>
+  new IframeTransport(options);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isArcadeHostConfig(value: unknown): value is HostLaunchConfig {
+function isArcadeHostConfig(value: unknown): value is AcceptedHostLaunchConfig {
   if (
     !isRecord(value) ||
     value.protocolVersion !== "1.0" ||
@@ -68,18 +79,24 @@ export class NumberLineJumperGamePlatformRuntime {
   private startedAtMs = 0;
   private completed = false;
   private handshakeAccepted = false;
-  private acceptedHostConfig: HostLaunchConfig | null = null;
+  private acceptedHostConfig: AcceptedHostLaunchConfig | null = null;
   private readonly readyListeners = new Set<() => void>();
+  private connectionFailed = false;
+
+  constructor(
+    private readonly transportFactory: IframeTransportFactory = createIframeTransport,
+  ) {}
 
   get isHandshakeAccepted(): boolean {
     return this.handshakeAccepted;
   }
 
-  get hostLaunchConfig(): HostLaunchConfig | null {
+  get hostLaunchConfig(): AcceptedHostLaunchConfig | null {
     return this.acceptedHostConfig;
   }
 
   connect(search?: string): boolean {
+    if (this.connectionFailed) return false;
     if (this.transport) return true;
 
     const ids = readGpsdkSessionParams(search);
@@ -90,7 +107,7 @@ export class NumberLineJumperGamePlatformRuntime {
     if (!origin || origin === "null") return false;
 
     try {
-      const transport = new IframeTransport({
+      const transport = this.transportFactory({
         channelId: ids.channelId,
         sessionId: ids.sessionId,
         targetWindow: window.parent,
@@ -150,6 +167,25 @@ export class NumberLineJumperGamePlatformRuntime {
       reason,
     };
     this.transport.sendMessage("COMPLETE_SESSION", payload);
+  }
+
+  /** Report a failed handshake before falling back to standalone play. */
+  failConnection(): boolean {
+    if (!this.transport || this.handshakeAccepted || this.connectionFailed) return false;
+    this.connectionFailed = true;
+    try {
+      this.transport.sendMessage("ERROR_SIGNAL", {
+        code: "TRANSPORT_FAILURE",
+        severity: "recoverable",
+        source: "game",
+        message: "The game platform handshake timed out; continuing in standalone play.",
+      });
+    } catch {
+      // Standalone fallback must still happen if the host window has disappeared.
+    } finally {
+      this.destroy();
+    }
+    return true;
   }
 
   destroy(): void {

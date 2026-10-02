@@ -1,0 +1,11 @@
+{
+  "gameId": "number-line-jumper",
+  "gameVersion": "0.1.0",
+  "sdkVersion": "0.1.1",
+  "sdkCommit": "8933746ebefe128a23b08f3fc9fd6796f4d906bd",
+  "protocolVersion": "1.0",
+  "runtimeKind": "web-dom",
+  "capabilities": {
+    "canPause": false
+  }
+}

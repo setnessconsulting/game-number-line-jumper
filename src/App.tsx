@@ -25,10 +25,12 @@ export default function App({
     if (!gamePlatformSdk) return;
 
     const unsubscribe = gamePlatformSdk.onHandshakeAccepted(() => {
-      setConnectionState((current) => current === "connecting" ? "embedded" : current);
+      setConnectionState((current) => (current === "connecting" ? "embedded" : current));
     });
     const timeoutId = window.setTimeout(() => {
-      setConnectionState((current) => current === "connecting" ? "standalone" : current);
+      if (gamePlatformSdk.failConnection()) {
+        setConnectionState((current) => (current === "connecting" ? "standalone" : current));
+      }
     }, GPSDK_HOST_HANDSHAKE_TIMEOUT_MS);
 
     return () => {
@@ -42,16 +44,15 @@ export default function App({
     if (!embedded || !gamePlatformSdk) return undefined;
 
     const surfaceContext = gamePlatformSdk.hostLaunchConfig?.surfaceContext;
+    if (!surfaceContext) return undefined;
     return {
       version: 1,
       mode: "free",
       autoStart: false,
-      sessionContext: surfaceContext
-        ? {
-            surface: surfaceContext.surface,
-            ...(surfaceContext.launchReason ? { launchReason: surfaceContext.launchReason } : {}),
-          }
-        : { surface: "arcade", launchReason: "direct" },
+      sessionContext: {
+        surface: surfaceContext.surface,
+        ...(surfaceContext.launchReason ? { launchReason: surfaceContext.launchReason } : {}),
+      },
       callbacks: {
         onExit: () => gamePlatformSdk.complete("user-exit"),
       },
