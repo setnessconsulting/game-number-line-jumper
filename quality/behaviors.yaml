@@ -1,0 +1,27 @@
+schema_version: "1"
+behaviors:
+  - behavior_id: gameplay.core-round-loop
+    description: A scored placement round plays end to end via keyboard or pointer with feedback, continue, and summary.
+    criticality: critical
+    required_evidence: [end-to-end]
+  - behavior_id: gameplay.explore-unscored
+    description: Explore mode zooms without scoring and stays distinct from scored rounds.
+    criticality: high
+    required_evidence: [end-to-end]
+  - behavior_id: gameplay.persistence-boundary
+    description: Bests and interrupted-round restore behave per the versioned schema across reload.
+    criticality: high
+    required_evidence: [deterministic, end-to-end]
+  - behavior_id: gameplay.host-contract
+    description: Host-v1 placement routing, bounded-break expiry, and once-only completion callbacks hold.
+    criticality: high
+    required_evidence: [contract, deterministic]
+  - behavior_id: gameplay.access-privacy-guardrails
+    description: Targets, reflow, and reduced-motion hold, and no audio or network starts before opt-in.
+    criticality: high
+    required_evidence: [end-to-end]
+critical_journeys:
+  - journey_id: first-scored-round
+    description: A first-time player completes one full scored round.
+    behavior_ids: [gameplay.core-round-loop]
+    required_evidence: [end-to-end]
