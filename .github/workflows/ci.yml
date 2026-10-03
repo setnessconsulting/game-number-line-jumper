@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   changes:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     outputs:
       game_code_changed: ${{ steps.classify.outputs.game_code_changed }}
@@ -198,6 +199,7 @@ jobs:
           retention-days: 90
 
   evidence:
+    timeout-minutes: 15
     if: always()
     needs: [changes, verify, browser, performance]
     runs-on: ubuntu-latest
