@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "prebuild": "node scripts/verify-sdk-adoption.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
@@ -34,6 +35,7 @@
     "test:performance": "npm run build && npm run test:performance:run && npm run perf:bundle && npm run perf:lighthouse"
   },
   "dependencies": {
+    "@setnessconsulting/game-platform-sdk": "https://github.com/setnessconsulting/project-game-platform-sdk.git#8933746ebefe128a23b08f3fc9fd6796f4d906bd",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

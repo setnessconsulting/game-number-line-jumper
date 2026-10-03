@@ -68,8 +68,33 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Configure read-only Game Platform SDK access
+        shell: bash
+        env:
+          GAME_PLATFORM_SDK_DEPLOY_KEY: ${{ secrets.GAME_PLATFORM_SDK_DEPLOY_KEY }}
+        run: |
+          if [[ -z "${GAME_PLATFORM_SDK_DEPLOY_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Add the existing read-only SDK key as the GAME_PLATFORM_SDK_DEPLOY_KEY repository Actions secret to install the private Game Platform SDK."
+            exit 1
+          fi
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$GAME_PLATFORM_SDK_DEPLOY_KEY" > "$HOME/.ssh/game-platform-sdk"
+          chmod 600 "$HOME/.ssh/game-platform-sdk"
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$HOME/.ssh/known_hosts"
+          printf '%s\n' \
+            'Host github.com' \
+            '  HostName github.com' \
+            '  User git' \
+            '  IdentityFile ~/.ssh/game-platform-sdk' \
+            '  IdentitiesOnly yes' \
+            '  StrictHostKeyChecking yes' \
+            '  UserKnownHostsFile ~/.ssh/known_hosts' > "$HOME/.ssh/config"
+          chmod 600 "$HOME/.ssh/known_hosts" "$HOME/.ssh/config"
       - id: npm_ci
         run: npm ci
+      - name: Remove SDK deploy key after dependency installation
+        if: always()
+        run: rm -f "$HOME/.ssh/game-platform-sdk" "$HOME/.ssh/config" "$HOME/.ssh/known_hosts"
       - id: typecheck
         run: npm run typecheck
       - id: lint

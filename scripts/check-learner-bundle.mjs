@@ -7,7 +7,12 @@ const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json")
 const buildRoot = join(repositoryRoot, "dist");
 // Development tools can have their own telemetry dependencies; only runtime dependencies and
 // built assets define what the learner downloads.
-const allowedRuntimeDependencies = new Set(["react", "react-dom"]);
+// The SDK is the approved embedded host protocol runtime; the bundle budget still limits its cost.
+const allowedRuntimeDependencies = new Set([
+  "react",
+  "react-dom",
+  "@setnessconsulting/game-platform-sdk",
+]);
 const blockedBundleMarker = /\b(?:phaser|pixi(?:\.js)?|unityloader|unityframework|createunityinstance|webglplayer|webgl|sentry|opentelemetry|posthog|datadog|newrelic|bugsnag|rollbar|fullstory|mixpanel|rudderstack|hotjar|clarity)\b/i;
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".mjs", ".svg"]);
 
